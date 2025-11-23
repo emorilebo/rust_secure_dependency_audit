@@ -1,0 +1,16 @@
+[package]
+name = "sample_rust_project"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Actively maintained (should score healthy)
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.35", features = ["full"] }
+
+# Common tools
+anyhow = "1.0"
+chrono = "0.4"
+
+# For testing license analysis
+regex = "1.10"

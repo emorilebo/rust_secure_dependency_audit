@@ -12,10 +12,10 @@ pub enum AuditError {
     ParseError(String),
 
     #[error("Network error: {0}")]
-    NetworkError(String),
+    NetworkError(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     #[error("API error from {source}: {message}")]
-    ApiError { source: String, message: String },
+    ApiError { source: &'static str, message: String },
 
     #[error("Configuration error: {0}")]
     ConfigError(String),
@@ -56,13 +56,13 @@ impl AuditError {
 
     /// Create a network error
     pub fn network(msg: impl Into<String>) -> Self {
-        Self::NetworkError(msg.into())
+        Self::NetworkError(msg.into().into())
     }
 
     /// Create an API error
-    pub fn api(source: impl Into<String>, message: impl Into<String>) -> Self {
+    pub fn api(source: &'static str, message: impl Into<String>) -> Self {
         Self::ApiError {
-            source: source.into(),
+            source,
             message: message.into(),
         }
     }

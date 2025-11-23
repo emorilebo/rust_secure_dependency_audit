@@ -1,1 +1,23 @@
+# Build artifacts
 /target
+Cargo.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated files
+*.profraw
+*.profdata
+
+# Test outputs
+*.test
+audit-*.json
+audit-*.md
