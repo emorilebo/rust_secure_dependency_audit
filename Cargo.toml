@@ -1,0 +1,58 @@
+[package]
+name = "rust_secure_dependency_audit"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A comprehensive tool for auditing Rust project dependencies: health scoring, license analysis, maintenance risk, and footprint estimation"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/rust_secure_dependency_audit"
+homepage = "https://github.com/yourusername/rust_secure_dependency_audit"
+documentation = "https://docs.rs/rust_secure_dependency_audit"
+readme = "README.md"
+keywords = ["audit", "dependency", "security", "rust", "supply-chain"]
+categories = ["development-tools", "command-line-utilities"]
+
+[[bin]]
+name = "secure-audit"
+path = "src/bin/secure-audit.rs"
+
+[dependencies]
+# Core dependencies
+cargo_metadata = "0.18"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+anyhow = "1.0"
+thiserror = "1.0"
+
+# HTTP client and async runtime
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+tokio = { version = "1.35", features = ["full"] }
+
+# Date/time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# License parsing
+spdx = "0.10"
+
+# CLI
+clap = { version = "4.4", features = ["derive", "cargo"] }
+colored = "2.1"
+indicatif = "0.17"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.0"
+mockito = "1.2"
+tokio-test = "0.4"
+tempfile = "3.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
