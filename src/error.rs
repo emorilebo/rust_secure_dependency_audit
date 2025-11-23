@@ -14,8 +14,8 @@ pub enum AuditError {
     #[error("Network error: {0}")]
     NetworkError(#[source] Box<dyn std::error::Error + Send + Sync>),
 
-    #[error("API error from {source}: {message}")]
-    ApiError { source: &'static str, message: String },
+    #[error("API error from {service}: {message}")]
+    ApiError { service: String, message: String },
 
     #[error("Configuration error: {0}")]
     ConfigError(String),
@@ -71,9 +71,9 @@ impl AuditError {
     }
 
     /// Create an API error
-    pub fn api(source: &'static str, message: impl Into<String>) -> Self {
+    pub fn api(service: impl Into<String>, message: impl Into<String>) -> Self {
         Self::ApiError {
-            source,
+            service: service.into(),
             message: message.into(),
         }
     }

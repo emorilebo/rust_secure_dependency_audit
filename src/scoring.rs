@@ -211,7 +211,7 @@ fn calculate_community_score(
 fn calculate_stability_score(crate_meta: Option<&CrateMetadata>) -> f32 {
     if let Some(meta) = crate_meta {
         // More versions generally indicates active maintenance
-        let score = match meta.version_count {
+        let score: f32 = match meta.version_count {
             0..=1 => 20.0,
             2..=5 => 40.0,
             6..=10 => 60.0,
