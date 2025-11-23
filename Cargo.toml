@@ -1,12 +1,12 @@
 [package]
 name = "rust_secure_dependency_audit"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Godfrey Lebo <emorylebo@gmail.com>"]
 description = "A comprehensive tool for auditing Rust project dependencies: health scoring, license analysis, maintenance risk, and footprint estimation"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/rust_secure_dependency_audit"
-homepage = "https://github.com/yourusername/rust_secure_dependency_audit"
+repository = "https://github.com/emorilebo/rust_secure_dependency_audit"
+homepage = "https://github.com/emorilebo/rust_secure_dependency_audit"
 documentation = "https://docs.rs/rust_secure_dependency_audit"
 readme = "README.md"
 keywords = ["audit", "dependency", "security", "rust", "supply-chain"]
