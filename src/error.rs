@@ -48,6 +48,17 @@ pub enum AuditError {
     DependencyNotFound(String),
 }
 
+#[derive(Debug)]
+struct StringError(String);
+
+impl std::fmt::Display for StringError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for StringError {}
+
 impl AuditError {
     /// Create a parse error
     pub fn parse(msg: impl Into<String>) -> Self {
@@ -56,7 +67,7 @@ impl AuditError {
 
     /// Create a network error
     pub fn network(msg: impl Into<String>) -> Self {
-        Self::NetworkError(msg.into().into())
+        Self::NetworkError(Box::new(StringError(msg.into())))
     }
 
     /// Create an API error

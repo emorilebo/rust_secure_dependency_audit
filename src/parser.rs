@@ -3,7 +3,7 @@
 use crate::error::{AuditError, Result};
 use crate::types::DependencySource;
 use cargo_metadata::{CargoOpt, Metadata, MetadataCommand, Package, PackageId};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Information about a parsed dependency

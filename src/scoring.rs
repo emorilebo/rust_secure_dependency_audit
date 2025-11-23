@@ -1,6 +1,6 @@
 //! Health scoring algorithms for dependencies
 
-use crate::config::{AuditConfig, ScoringWeights};
+use crate::config::AuditConfig;
 use crate::metadata::{CrateMetadata, GitHubMetadata, GitLabMetadata};
 use crate::types::{ComponentScores, DependencyMetrics, HealthStatus, RepositoryMetrics};
 use chrono::Utc;
@@ -42,7 +42,7 @@ pub fn calculate_health_score(
 }
 
 /// Determine health status from score
-pub fn determine_status(score: u8, config: &AuditConfig) -> HealthStatus {
+pub fn determine_status(score: u8, _config: &AuditConfig) -> HealthStatus {
     if score >= 80 {
         HealthStatus::Healthy
     } else if score >= 60 {
@@ -160,7 +160,7 @@ fn calculate_community_score(
     github_meta: Option<&GitHubMetadata>,
     gitlab_meta: Option<&GitLabMetadata>,
 ) -> f32 {
-    let mut score = 0.0;
+    let mut score: f32 = 0.0;
     
     // Author/maintainer count from crates.io
     if let Some(crate_meta) = crate_meta {

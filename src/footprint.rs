@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn test_feature_score() {
-        let mut features = HashMap::new();
+        let mut features = BTreeMap::new();
         
         assert!(calculate_feature_score(&features) < 0.2);
         

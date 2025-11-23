@@ -1,7 +1,7 @@
 //! Main audit orchestration logic
 
 use crate::config::AuditConfig;
-use crate::error::{AuditError, Result};
+use crate::error::Result;
 use crate::footprint::estimate_footprint;
 use crate::license::analyze_license;
 use crate::metadata::{fetch_crate_metadata, fetch_github_metadata, fetch_gitlab_metadata};

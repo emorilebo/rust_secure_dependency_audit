@@ -196,7 +196,7 @@ async fn fetch_with_retry(
 async fn fetch_contributors_count(
     client: &Client,
     url: &str,
-    config: &NetworkConfig,
+    _config: &NetworkConfig,
 ) -> Result<u32> {
     match client.get(url).send().await {
         Ok(response) => {

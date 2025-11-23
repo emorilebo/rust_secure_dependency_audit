@@ -2,7 +2,6 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Complete audit report for a Rust project
 #[derive(Debug, Clone, Serialize, Deserialize)]
