@@ -243,35 +243,24 @@ fn build_metrics(
 ) -> Option<DependencyMetrics> {
     let now = Utc::now();
     
-    let days_since_last_update = if let Some(gh) = github_meta {
-        Some((now - gh.pushed_at).num_days() as u32)
-    } else if let Some(gl) = gitlab_meta {
-        Some((now - gl.last_activity_at).num_days() as u32)
-    } else if let Some(cr) = crate_meta {
-        Some((now - cr.updated_at).num_days() as u32)
-    } else {
-        None
-    };
+    let days_since_last_update = github_meta
+        .map(|gh| (now - gh.pushed_at).num_days() as u32)
+        .or_else(|| gitlab_meta.map(|gl| (now - gl.last_activity_at).num_days() as u32))
+        .or_else(|| crate_meta.map(|cr| (now - cr.updated_at).num_days() as u32));
     
-    let repository = if let Some(gh) = github_meta {
-        Some(RepositoryMetrics {
-            open_issues: Some(gh.open_issues),
-            contributor_count: gh.contributors_count,
-            days_since_last_commit: Some((now - gh.pushed_at).num_days() as u32),
-            stars: Some(gh.stars),
-            is_archived: Some(gh.is_archived),
-        })
-    } else if let Some(gl) = gitlab_meta {
-        Some(RepositoryMetrics {
-            open_issues: Some(gl.open_issues),
-            contributor_count: None,
-            days_since_last_commit: Some((now - gl.last_activity_at).num_days() as u32),
-            stars: Some(gl.stars),
-            is_archived: Some(gl.is_archived),
-        })
-    } else {
-        None
-    };
+    let repository = github_meta.map(|gh| RepositoryMetrics {
+        open_issues: Some(gh.open_issues),
+        contributor_count: gh.contributors_count,
+        days_since_last_commit: Some((now - gh.pushed_at).num_days() as u32),
+        stars: Some(gh.stars),
+        is_archived: Some(gh.is_archived),
+    }).or_else(|| gitlab_meta.map(|gl| RepositoryMetrics {
+        open_issues: Some(gl.open_issues),
+        contributor_count: None,
+        days_since_last_commit: Some((now - gl.last_activity_at).num_days() as u32),
+        stars: Some(gl.stars),
+        is_archived: Some(gl.is_archived),
+    }));
     
     Some(DependencyMetrics {
         days_since_last_update,

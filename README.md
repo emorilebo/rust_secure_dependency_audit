@@ -274,7 +274,7 @@ Contributions are welcome! Areas for improvement:
 - Persistent caching of API responses
 - Integration with advisory databases
 
-Please open an issue or pull request on [GitHub](https://github.com/yourusername/rust_secure_dependency_audit).
+Please open an issue or pull request on [GitHub](https://github.com/emorilebo/rust_secure_dependency_audit).
 
 ## License
 

@@ -12,9 +12,10 @@
 //! use rust_secure_dependency_audit::{audit_project, AuditConfig};
 //! use std::path::Path;
 //!
-//! # fn main() -> anyhow::Result<()> {
+//! # #[tokio::main]
+//! # async fn main() -> anyhow::Result<()> {
 //! let config = AuditConfig::default();
-//! let report = audit_project(Path::new("."), &config)?;
+//! let report = audit_project(Path::new("."), &config).await?;
 //!
 //! for dep in report.dependencies {
 //!     println!("{}: {} (score: {})", dep.name, dep.status, dep.health_score);

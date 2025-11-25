@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2024-01-15
+## [0.1.2] - 2025-11-26
+
+### Fixed
+- Compilation error in `ApiError` struct definition
+- Ambiguous numeric type in scoring algorithm
+- Clippy lints in `scoring.rs` (`Option::map` manual implementation)
+- Async execution in library doctests
+- Updated documentation URLs to correct username
+
+## [0.1.1] - 2024-01-15
 
 ### Added
 - Initial release
@@ -39,5 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example programs demonstrating usage
 - Integration tests
 
-[Unreleased]: https://github.com/yourusername/rust_secure_dependency_audit/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/rust_secure_dependency_audit/releases/tag/v0.1.0
+[Unreleased]: https://github.com/emorilebo/rust_secure_dependency_audit/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/emorilebo/rust_secure_dependency_audit/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/emorilebo/rust_secure_dependency_audit/releases/tag/v0.1.1
