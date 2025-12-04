@@ -4,7 +4,7 @@ use crate::config::AuditConfig;
 use crate::error::Result;
 use crate::footprint::estimate_footprint;
 use crate::license::analyze_license;
-// use crate::metadata::openssf::OpenSSFClient;
+use crate::metadata::openssf::OpenSSFClient;
 use crate::metadata::{fetch_crate_metadata, fetch_github_metadata, fetch_gitlab_metadata};
 use crate::parser::{get_project_name, parse_project, ParsedDependency};
 use crate::scoring::{calculate_health_score, determine_status};
@@ -160,7 +160,6 @@ async fn process_dependency(
     };
 
     // Fetch OpenSSF Scorecard
-    /*
     let openssf_score = if let Some(url) = repo_url {
         match OpenSSFClient::new(&config.network) {
             Ok(client) => match client.get_scorecard(url).await {
@@ -176,8 +175,6 @@ async fn process_dependency(
     } else {
         None
     };
-    */
-    let openssf_score = None;
 
     // Calculate health score
     let (health_score, _component_scores, metrics) = calculate_health_score(

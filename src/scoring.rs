@@ -3,7 +3,7 @@
 use crate::config::AuditConfig;
 use crate::metadata::{CrateMetadata, GitHubMetadata, GitLabMetadata};
 use crate::types::{ComponentScores, DependencyMetrics, HealthStatus, RepositoryMetrics};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 
 /// Calculate overall health score for a dependency
 pub fn calculate_health_score(
@@ -86,7 +86,7 @@ fn calculate_recency_score(
         return 0.0; // No data
     };
     
-    let days_old = (now - last_update).num_days() as u32;
+    let days_old = now.signed_duration_since(last_update).num_days() as u32;
     
     // Score based on staleness thresholds
     let stale_days = config.staleness_thresholds.stale_days;
@@ -131,7 +131,7 @@ fn calculate_maintenance_score(
         }
         
         // Recent activity is good
-        let days_since_push = (Utc::now() - gh.pushed_at).num_days();
+        let days_since_push = Utc::now().signed_duration_since(gh.pushed_at).num_days();
         if days_since_push <= 30 {
             score += 25.0;
         } else if days_since_push <= 90 {
@@ -150,7 +150,7 @@ fn calculate_maintenance_score(
             score += 10.0;
         }
         
-        let days_since_activity = (Utc::now() - gl.last_activity_at).num_days();
+        let days_since_activity = Utc::now().signed_duration_since(gl.last_activity_at).num_days();
         if days_since_activity <= 30 {
             score += 25.0;
         } else if days_since_activity <= 90 {
@@ -290,21 +290,21 @@ fn build_metrics(
     let now = Utc::now();
     
     let days_since_last_update = github_meta
-        .map(|gh| (now - gh.pushed_at).num_days() as u32)
-        .or_else(|| gitlab_meta.map(|gl| (now - gl.last_activity_at).num_days() as u32))
-        .or_else(|| crate_meta.map(|cr| (now - cr.updated_at).num_days() as u32));
+        .map(|gh| now.signed_duration_since(gh.pushed_at).num_days() as u32)
+        .or_else(|| gitlab_meta.map(|gl| now.signed_duration_since(gl.last_activity_at).num_days() as u32))
+        .or_else(|| crate_meta.map(|cr| now.signed_duration_since(cr.updated_at).num_days() as u32));
     
     let repository = github_meta.map(|gh| RepositoryMetrics {
         open_issues: Some(gh.open_issues),
         contributor_count: gh.contributors_count,
-        days_since_last_commit: Some((now - gh.pushed_at).num_days() as u32),
+        days_since_last_commit: Some(now.signed_duration_since(gh.pushed_at).num_days() as u32),
         stars: Some(gh.stars),
         is_archived: Some(gh.is_archived),
         has_security_policy: gh.has_security_policy,
     }).or_else(|| gitlab_meta.map(|gl| RepositoryMetrics {
         open_issues: Some(gl.open_issues),
         contributor_count: None,
-        days_since_last_commit: Some((now - gl.last_activity_at).num_days() as u32),
+        days_since_last_commit: Some(now.signed_duration_since(gl.last_activity_at).num_days() as u32),
         stars: Some(gl.stars),
         is_archived: Some(gl.is_archived),
         has_security_policy: None,
