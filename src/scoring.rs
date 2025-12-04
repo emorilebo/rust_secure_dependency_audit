@@ -3,7 +3,7 @@
 use crate::config::AuditConfig;
 use crate::metadata::{CrateMetadata, GitHubMetadata, GitLabMetadata};
 use crate::types::{ComponentScores, DependencyMetrics, HealthStatus, RepositoryMetrics};
-use chrono::{Duration, Utc};
+use chrono::Utc;
 
 /// Calculate overall health score for a dependency
 pub fn calculate_health_score(
@@ -252,7 +252,7 @@ fn calculate_security_score(
     github_meta: Option<&GitHubMetadata>,
     openssf_score: Option<f32>,
 ) -> f32 {
-    let mut score = 50.0; // Base score
+    let mut score: f32 = 50.0; // Base score
     
     // OpenSSF Scorecard (0-10) -> 0-100
     if let Some(ossf) = openssf_score {
