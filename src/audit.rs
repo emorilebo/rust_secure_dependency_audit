@@ -4,6 +4,7 @@ use crate::config::AuditConfig;
 use crate::error::Result;
 use crate::footprint::estimate_footprint;
 use crate::license::analyze_license;
+// use crate::metadata::openssf::OpenSSFClient;
 use crate::metadata::{fetch_crate_metadata, fetch_github_metadata, fetch_gitlab_metadata};
 use crate::parser::{get_project_name, parse_project, ParsedDependency};
 use crate::scoring::{calculate_health_score, determine_status};
@@ -158,11 +159,32 @@ async fn process_dependency(
         None
     };
 
+    // Fetch OpenSSF Scorecard
+    /*
+    let openssf_score = if let Some(url) = repo_url {
+        match OpenSSFClient::new(&config.network) {
+            Ok(client) => match client.get_scorecard(url).await {
+                Ok(Some(data)) => Some(data.score),
+                Ok(None) => None,
+                Err(e) => {
+                    debug!("Failed to fetch OpenSSF scorecard for {}: {}", dep.name, e);
+                    None
+                }
+            },
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+    */
+    let openssf_score = None;
+
     // Calculate health score
     let (health_score, _component_scores, metrics) = calculate_health_score(
         crate_meta.as_ref(),
         github_meta.as_ref(),
         gitlab_meta.as_ref(),
+        openssf_score,
         config,
     );
 
@@ -191,6 +213,7 @@ async fn process_dependency(
         source: dep.source,
         metrics,
         warnings,
+        is_yanked: crate_meta.as_ref().map(|m| m.is_yanked).unwrap_or(false),
     })
 }
 

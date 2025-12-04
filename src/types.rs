@@ -56,6 +56,8 @@ pub struct DependencyHealth {
     pub metrics: Option<DependencyMetrics>,
     /// Any warnings or issues
     pub warnings: Vec<String>,
+    /// Whether the crate version is yanked
+    pub is_yanked: bool,
 }
 
 /// Health status categories
@@ -133,6 +135,8 @@ pub struct DependencyMetrics {
     pub maintainer_count: Option<u32>,
     /// Repository metrics (if available)
     pub repository: Option<RepositoryMetrics>,
+    /// OpenSSF Scorecard score (0.0-10.0)
+    pub openssf_score: Option<f32>,
     /// Individual component scores
     pub scores: ComponentScores,
 }
@@ -150,6 +154,8 @@ pub struct RepositoryMetrics {
     pub stars: Option<u32>,
     /// Whether the repository is archived
     pub is_archived: Option<bool>,
+    /// Whether the repository has a SECURITY.md policy
+    pub has_security_policy: Option<bool>,
 }
 
 /// Individual component scores (0-100 scale)
@@ -163,6 +169,8 @@ pub struct ComponentScores {
     pub community: f32,
     /// Score based on version stability
     pub stability: f32,
+    /// Score based on security practices (OpenSSF, SECURITY.md)
+    pub security: f32,
 }
 
 impl AuditReport {

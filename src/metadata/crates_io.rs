@@ -30,6 +30,7 @@ pub struct CrateMetadata {
     pub updated_at: DateTime<Utc>,
     pub version_count: u32,
     pub authors: Vec<String>,
+    pub is_yanked: bool,
 }
 
 /// Response from crates.io API for crate info
@@ -62,6 +63,8 @@ struct VersionInfo {
     downloads: u64,
     #[serde(default)]
     authors: Vec<String>,
+    #[serde(default)]
+    yanked: bool,
 }
 
 /// Fetch metadata for a crate from crates.io
@@ -113,6 +116,7 @@ pub async fn fetch_crate_metadata(
         updated_at,
         version_count: data.versions.len() as u32,
         authors: version_info.authors.clone(),
+        is_yanked: version_info.yanked,
     })
 }
 

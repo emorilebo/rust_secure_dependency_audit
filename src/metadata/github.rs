@@ -25,6 +25,7 @@ pub struct GitHubMetadata {
     pub updated_at: DateTime<Utc>,
     pub pushed_at: DateTime<Utc>,
     pub contributors_count: Option<u32>,
+    pub has_security_policy: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,6 +60,9 @@ pub async fn fetch_github_metadata(
     let contributors_url = format!("{}/contributors?per_page=1", repo_url);
     let contributors_count = fetch_contributors_count(&client, &contributors_url, config).await.ok();
 
+    // Check for SECURITY.md
+    let has_security_policy = check_security_policy(&client, &owner, &repo, config).await.ok();
+
     let created_at = parse_github_datetime(&repo_data.created_at)?;
     let updated_at = parse_github_datetime(&repo_data.updated_at)?;
     let pushed_at = parse_github_datetime(&repo_data.pushed_at)?;
@@ -75,6 +79,7 @@ pub async fn fetch_github_metadata(
         updated_at,
         pushed_at,
         contributors_count,
+        has_security_policy,
     })
 }
 
@@ -223,6 +228,61 @@ async fn fetch_contributors_count(
         }
         Err(_) => Ok(0), // Don't fail if contributors fetch fails
     }
+}
+
+/// Check for existence of SECURITY.md in common locations
+async fn check_security_policy(
+    client: &Client,
+    owner: &str,
+    repo: &str,
+    config: &NetworkConfig,
+) -> Result<bool> {
+    // Common locations for SECURITY.md
+    let paths = ["SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md"];
+    
+    for path in paths {
+        let url = format!("{}/repos/{}/{}/contents/{}", GITHUB_API, owner, repo, path);
+        debug!("Checking for security policy at {}", url);
+        
+        // We use a HEAD request if possible, but GitHub API for contents usually returns JSON
+        // For contents API, 200 OK means it exists, 404 means it doesn't.
+        // We can use a lightweight GET request or just check if it exists.
+        // To save bandwidth, we can check the community profile which is a dedicated API for this.
+        // https://docs.github.com/en/rest/metrics/community?apiVersion=2022-11-28
+        
+        // Let's try the community profile endpoint first as it's cleaner
+        let community_url = format!("{}/repos/{}/{}/community/profile", GITHUB_API, owner, repo);
+        
+        match client.get(&community_url).send().await {
+            Ok(resp) => {
+                if resp.status().is_success() {
+                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                        if let Some(files) = json.get("files") {
+                            if files.get("security_note").is_some() {
+                                return Ok(true);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(_) => {}
+        }
+        
+        // Fallback to checking specific files if community profile fails or isn't available
+        // (though community profile is the standard way now)
+        match client.get(&url).send().await {
+             Ok(resp) => {
+                 if resp.status().is_success() {
+                     return Ok(true);
+                 }
+             }
+             Err(_) => {}
+        }
+        
+        tokio::time::sleep(config.request_delay()).await;
+    }
+    
+    Ok(false)
 }
 
 /// Extract last page number from Link header

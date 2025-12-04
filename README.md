@@ -127,6 +127,11 @@ Each dependency receives a health score (0-100) based on weighted factors:
    - Number of published versions
    - Download count
 
+5. **Security (15%)**: Security practices
+   - **OpenSSF Scorecard**: 0-10 score mapped to 0-100
+   - **Security Policy**: Presence of `SECURITY.md` (+20 points)
+   - **Yanked Status**: Yanked crates receive a massive penalty (max score 10)
+
 Scores are then categorized:
 - **80-100**: Healthy 🟢
 - **60-79**: Warning 🟡
@@ -165,7 +170,9 @@ Create a config file (e.g., `audit-config.toml`):
 recency = 0.50
 maintenance = 0.30
 community = 0.15
-stability = 0.05
+community = 0.15
+stability = 0.10
+security = 0.15
 
 [staleness_thresholds]
 stale_days = 180  # 6 months
@@ -185,7 +192,9 @@ max_footprint_risk = 0.7
 [network]
 timeout_secs = 30
 max_retries = 3
+max_retries = 3
 request_delay_ms = 100
+enable_openssf = true
 ```
 
 Use it:

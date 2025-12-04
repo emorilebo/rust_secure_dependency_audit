@@ -15,6 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             maintenance: 0.30,
             community: 0.15,
             stability: 0.05,
+            security: 0.0,
         })
         .staleness_thresholds(StalenessThresholds {
             stale_days: 180,    // 6 months instead of 1 year

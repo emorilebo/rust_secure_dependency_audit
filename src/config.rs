@@ -32,6 +32,8 @@ pub struct ScoringWeights {
     pub community: f32,
     /// Weight for stability score (0.0-1.0)
     pub stability: f32,
+    /// Weight for security score (0.0-1.0)
+    pub security: f32,
 }
 
 /// Thresholds for determining staleness
@@ -80,6 +82,8 @@ pub struct NetworkConfig {
     pub github_token: Option<String>,
     /// GitLab API token (optional)
     pub gitlab_token: Option<String>,
+    /// Enable OpenSSF Scorecard checks (requires network)
+    pub enable_openssf: bool,
 }
 
 impl Default for AuditConfig {
@@ -98,10 +102,11 @@ impl Default for AuditConfig {
 impl Default for ScoringWeights {
     fn default() -> Self {
         Self {
-            recency: 0.40,
-            maintenance: 0.30,
-            community: 0.20,
+            recency: 0.35,
+            maintenance: 0.25,
+            community: 0.15,
             stability: 0.10,
+            security: 0.15,
         }
     }
 }
@@ -109,7 +114,7 @@ impl Default for ScoringWeights {
 impl ScoringWeights {
     /// Validate that weights sum to approximately 1.0
     pub fn validate(&self) -> Result<(), String> {
-        let sum = self.recency + self.maintenance + self.community + self.stability;
+        let sum = self.recency + self.maintenance + self.community + self.stability + self.security;
         if (sum - 1.0).abs() > 0.01 {
             return Err(format!(
                 "Scoring weights must sum to 1.0, got {}",
@@ -121,12 +126,13 @@ impl ScoringWeights {
 
     /// Normalize weights to sum to 1.0
     pub fn normalize(&mut self) {
-        let sum = self.recency + self.maintenance + self.community + self.stability;
+        let sum = self.recency + self.maintenance + self.community + self.stability + self.security;
         if sum > 0.0 {
             self.recency /= sum;
             self.maintenance /= sum;
             self.community /= sum;
             self.stability /= sum;
+            self.security /= sum;
         }
     }
 }
@@ -169,6 +175,7 @@ impl Default for NetworkConfig {
             request_delay_ms: 100,
             github_token: std::env::var("GITHUB_TOKEN").ok(),
             gitlab_token: std::env::var("GITLAB_TOKEN").ok(),
+            enable_openssf: true,
         }
     }
 }

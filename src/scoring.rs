@@ -10,6 +10,7 @@ pub fn calculate_health_score(
     crate_meta: Option<&CrateMetadata>,
     github_meta: Option<&GitHubMetadata>,
     gitlab_meta: Option<&GitLabMetadata>,
+    openssf_score: Option<f32>,
     config: &AuditConfig,
 ) -> (u8, ComponentScores, Option<DependencyMetrics>) {
     let weights = &config.scoring_weights;
@@ -19,24 +20,35 @@ pub fn calculate_health_score(
     let maintenance_score = calculate_maintenance_score(github_meta, gitlab_meta);
     let community_score = calculate_community_score(crate_meta, github_meta, gitlab_meta);
     let stability_score = calculate_stability_score(crate_meta);
+    let security_score = calculate_security_score(crate_meta, github_meta, openssf_score);
     
     let scores = ComponentScores {
         recency: recency_score,
         maintenance: maintenance_score,
         community: community_score,
         stability: stability_score,
+        security: security_score,
     };
     
     // Calculate weighted overall score
-    let overall = (recency_score * weights.recency
+    let mut overall = (recency_score * weights.recency
         + maintenance_score * weights.maintenance
         + community_score * weights.community
-        + stability_score * weights.stability)
-        .round()
-        .clamp(0.0, 100.0) as u8;
+        + stability_score * weights.stability
+        + security_score * weights.security)
+        .round();
+        
+    // Penalize yanked crates heavily
+    if let Some(meta) = crate_meta {
+        if meta.is_yanked {
+            overall = (overall * 0.1).min(10.0); // Max score 10 for yanked crates
+        }
+    }
+    
+    let overall = overall.clamp(0.0, 100.0) as u8;
     
     // Build metrics
-    let metrics = build_metrics(crate_meta, github_meta, gitlab_meta, &scores);
+    let metrics = build_metrics(crate_meta, github_meta, gitlab_meta, openssf_score, &scores);
     
     (overall, scores, metrics)
 }
@@ -234,11 +246,45 @@ fn calculate_stability_score(crate_meta: Option<&CrateMetadata>) -> f32 {
     }
 }
 
+/// Calculate security score based on policy and OpenSSF
+fn calculate_security_score(
+    crate_meta: Option<&CrateMetadata>,
+    github_meta: Option<&GitHubMetadata>,
+    openssf_score: Option<f32>,
+) -> f32 {
+    let mut score = 50.0; // Base score
+    
+    // OpenSSF Scorecard (0-10) -> 0-100
+    if let Some(ossf) = openssf_score {
+        return ossf * 10.0;
+    }
+    
+    // Fallback heuristics if no OpenSSF score
+    if let Some(gh) = github_meta {
+        if let Some(has_policy) = gh.has_security_policy {
+            if has_policy {
+                score += 20.0;
+            } else {
+                score -= 10.0;
+            }
+        }
+    }
+    
+    if let Some(cm) = crate_meta {
+        if cm.is_yanked {
+            return 0.0;
+        }
+    }
+    
+    score.clamp(0.0, 100.0)
+}
+
 /// Build detailed metrics object
 fn build_metrics(
     crate_meta: Option<&CrateMetadata>,
     github_meta: Option<&GitHubMetadata>,
     gitlab_meta: Option<&GitLabMetadata>,
+    openssf_score: Option<f32>,
     scores: &ComponentScores,
 ) -> Option<DependencyMetrics> {
     let now = Utc::now();
@@ -254,12 +300,14 @@ fn build_metrics(
         days_since_last_commit: Some((now - gh.pushed_at).num_days() as u32),
         stars: Some(gh.stars),
         is_archived: Some(gh.is_archived),
+        has_security_policy: gh.has_security_policy,
     }).or_else(|| gitlab_meta.map(|gl| RepositoryMetrics {
         open_issues: Some(gl.open_issues),
         contributor_count: None,
         days_since_last_commit: Some((now - gl.last_activity_at).num_days() as u32),
         stars: Some(gl.stars),
         is_archived: Some(gl.is_archived),
+        has_security_policy: None,
     }));
     
     Some(DependencyMetrics {
@@ -267,6 +315,7 @@ fn build_metrics(
         version_count: crate_meta.map(|m| m.version_count),
         maintainer_count: crate_meta.map(|m| m.authors.len() as u32),
         repository,
+        openssf_score,
         scores: scores.clone(),
     })
 }
@@ -292,6 +341,7 @@ mod tests {
             updated_at: Utc::now() - Duration::days(15),
             version_count: 10,
             authors: vec![],
+            is_yanked: false,
         };
         
         let score = calculate_recency_score(Some(&crate_meta), None, None, &config);
