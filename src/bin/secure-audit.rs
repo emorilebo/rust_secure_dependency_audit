@@ -8,7 +8,6 @@ use rust_secure_dependency_audit::{
 };
 use std::path::PathBuf;
 use std::process;
-use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[derive(Parser)]
@@ -31,6 +30,10 @@ struct Cli {
     /// Enable verbose logging
     #[arg(short = 'v', long)]
     verbose: bool,
+
+    /// Suppress progress output (quiet mode, useful for CI)
+    #[arg(short = 'q', long)]
+    quiet: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -120,18 +123,25 @@ async fn main() {
     }
 
     // Run audit
-    let spinner = ProgressBar::new_spinner();
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.green} {msg}")
-            .unwrap(),
-    );
-    spinner.set_message("Auditing dependencies...");
-    spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+    let spinner = if cli.quiet {
+        None
+    } else {
+        let pb = ProgressBar::new_spinner();
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.green} {msg}")
+                .unwrap(),
+        );
+        pb.set_message("Auditing dependencies...");
+        pb.enable_steady_tick(std::time::Duration::from_millis(100));
+        Some(pb)
+    };
 
     let result = audit_project(&cli.project_path, &config).await;
 
-    spinner.finish_and_clear();
+    if let Some(pb) = spinner {
+        pb.finish_and_clear();
+    }
 
     let report = match result {
         Ok(report) => report,

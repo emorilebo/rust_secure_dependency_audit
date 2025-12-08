@@ -33,11 +33,13 @@ pub struct OpenSSFClient {
     config: NetworkConfig,
 }
 
+const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
+
 impl OpenSSFClient {
     pub fn new(config: &NetworkConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(config.timeout())
-            .user_agent("rust_secure_dependency_audit/0.1")
+            .user_agent(USER_AGENT)
             .build()
             .map_err(|e| AuditError::network(format!("Failed to build HTTP client: {}", e)))?;
 

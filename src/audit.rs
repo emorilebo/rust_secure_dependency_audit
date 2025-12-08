@@ -232,7 +232,7 @@ mod tests {
         match result {
             Ok(report) => {
                 assert!(!report.project_name.is_empty());
-                assert!(report.dependencies.len() > 0);
+                assert!(!report.dependencies.is_empty());
                 println!("Self-audit successful: {} dependencies found", report.dependencies.len());
             }
             Err(e) => {

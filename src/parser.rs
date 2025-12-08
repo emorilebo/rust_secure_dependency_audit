@@ -161,7 +161,6 @@ pub fn get_project_name(project_path: &Path) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn test_determine_source() {

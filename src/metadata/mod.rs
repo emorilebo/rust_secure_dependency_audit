@@ -6,4 +6,5 @@ pub mod openssf;
 pub use crates_io::{fetch_crate_metadata, CrateMetadata};
 pub use github::{fetch_github_metadata, GitHubMetadata};
 pub use gitlab::{fetch_gitlab_metadata, GitLabMetadata};
+#[allow(unused_imports)]
 pub use openssf::OpenSSFClient;
