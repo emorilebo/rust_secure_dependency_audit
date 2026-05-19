@@ -25,7 +25,7 @@ pub fn parse_project(project_path: &Path) -> Result<Vec<ParsedDependency>> {
 /// Get cargo metadata for a project
 fn get_cargo_metadata(project_path: &Path) -> Result<Metadata> {
     let manifest_path = project_path.join("Cargo.toml");
-    
+
     if !manifest_path.exists() {
         return Err(AuditError::parse(format!(
             "Cargo.toml not found at {}",
@@ -44,7 +44,7 @@ fn get_cargo_metadata(project_path: &Path) -> Result<Metadata> {
 /// Extract all dependencies from cargo metadata
 fn extract_dependencies(metadata: &Metadata) -> Result<Vec<ParsedDependency>> {
     let mut dependencies = Vec::new();
-    
+
     // Get the root package(s) - handle workspace projects
     let root_packages: Vec<&Package> = if let Some(resolve) = &metadata.resolve {
         resolve
@@ -78,7 +78,7 @@ fn extract_dependencies(metadata: &Metadata) -> Result<Vec<ParsedDependency>> {
     // Get all packages from resolve graph
     if let Some(resolve) = &metadata.resolve {
         let root_ids: HashSet<_> = root_packages.iter().map(|p| &p.id).collect();
-        
+
         for node in &resolve.nodes {
             // Skip root packages themselves
             if root_ids.contains(&node.id) {
@@ -107,7 +107,7 @@ fn extract_dependencies(metadata: &Metadata) -> Result<Vec<ParsedDependency>> {
 fn determine_source(package: &Package) -> DependencySource {
     if let Some(source) = &package.source {
         let source_str = source.repr.as_str();
-        
+
         if source_str.starts_with("registry+") {
             DependencySource::CratesIo
         } else if source_str.starts_with("git+") {
@@ -131,7 +131,9 @@ fn determine_source(package: &Package) -> DependencySource {
     } else {
         // No source usually means it's a path dependency or workspace member
         DependencySource::Path {
-            path: package.manifest_path.parent()
+            path: package
+                .manifest_path
+                .parent()
                 .map(|p| p.as_std_path().display().to_string())
                 .unwrap_or_else(|| "unknown".to_string()),
         }
@@ -141,7 +143,7 @@ fn determine_source(package: &Package) -> DependencySource {
 /// Get the name of the project from its Cargo.toml
 pub fn get_project_name(project_path: &Path) -> Result<String> {
     let metadata = get_cargo_metadata(project_path)?;
-    
+
     if let Some(resolve) = &metadata.resolve {
         if let Some(root_id) = &resolve.root {
             if let Some(root_pkg) = metadata.packages.iter().find(|p| &p.id == root_id) {
@@ -149,7 +151,7 @@ pub fn get_project_name(project_path: &Path) -> Result<String> {
             }
         }
     }
-    
+
     // Fallback: use workspace name or first package
     if let Some(first_pkg) = metadata.packages.first() {
         Ok(first_pkg.name.clone())
@@ -160,11 +162,10 @@ pub fn get_project_name(project_path: &Path) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_determine_source() {
-        // Test would require creating mock Package instances
-        // For now, this is a placeholder
+        // Constructing `cargo_metadata::Package` requires running cargo,
+        // so source-detection coverage lives in the integration tests under
+        // `tests/`. This unit test is intentionally a smoke placeholder.
     }
 }

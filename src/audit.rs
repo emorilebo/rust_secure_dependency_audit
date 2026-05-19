@@ -34,10 +34,7 @@ pub async fn audit_project(project_path: &Path, config: &AuditConfig) -> Result<
         .exec()?;
 
     // Create report
-    let mut report = AuditReport::new(
-        project_name,
-        project_path.display().to_string(),
-    );
+    let mut report = AuditReport::new(project_name, project_path.display().to_string());
 
     // Process dependencies in parallel (with rate limiting)
     let mut tasks = Vec::new();
@@ -52,9 +49,10 @@ pub async fn audit_project(project_path: &Path, config: &AuditConfig) -> Result<
         let config_clone = config.clone();
         let metadata_clone = cargo_metadata.clone();
 
-        let task = tokio::spawn(async move {
-            process_dependency(dep, &config_clone, &metadata_clone).await
-        });
+        let task =
+            tokio::spawn(
+                async move { process_dependency(dep, &config_clone, &metadata_clone).await },
+            );
 
         tasks.push(task);
 
@@ -189,13 +187,15 @@ async fn process_dependency(
 
     // Analyze license
     let license_str = crate_meta.as_ref().and_then(|m| m.license.as_deref());
-    let (license_risk, license_warnings) =
-        analyze_license(license_str, &config.license_policy);
+    let (license_risk, license_warnings) = analyze_license(license_str, &config.license_policy);
     warnings.extend(license_warnings);
 
     // Estimate footprint
-    let (footprint_risk, footprint_warnings) =
-        estimate_footprint(&dep.package_id, cargo_metadata, &config.footprint_thresholds);
+    let (footprint_risk, footprint_warnings) = estimate_footprint(
+        &dep.package_id,
+        cargo_metadata,
+        &config.footprint_thresholds,
+    );
     warnings.extend(footprint_warnings);
 
     Ok(DependencyHealth {
@@ -233,7 +233,10 @@ mod tests {
             Ok(report) => {
                 assert!(!report.project_name.is_empty());
                 assert!(!report.dependencies.is_empty());
-                println!("Self-audit successful: {} dependencies found", report.dependencies.len());
+                println!(
+                    "Self-audit successful: {} dependencies found",
+                    report.dependencies.len()
+                );
             }
             Err(e) => {
                 // Might fail in CI without network, that's okay

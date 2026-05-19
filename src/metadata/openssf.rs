@@ -6,7 +6,11 @@ use tracing::{debug, warn};
 
 const OPENSSF_API_BASE: &str = "https://api.securityscorecards.dev";
 
+/// OpenSSF Scorecard response. Only `score` is consumed today; the rest of
+/// the schema is captured so callers can extend the audit (e.g. report
+/// per-check failures) without re-fetching.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ScorecardResponse {
     pub score: f32,
     pub date: String,
@@ -15,12 +19,14 @@ pub struct ScorecardResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct RepoInfo {
     pub name: String,
     pub commit: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ScorecardCheck {
     pub name: String,
     pub score: i32,
@@ -60,7 +66,7 @@ impl OpenSSFClient {
         if parts.len() < 2 {
             return Ok(None);
         }
-        
+
         let name = parts.last().unwrap();
         let owner = parts[parts.len() - 2];
         let platform = if repo_url.contains("github.com") {
@@ -71,7 +77,10 @@ impl OpenSSFClient {
             return Ok(None); // OpenSSF mainly supports GitHub/GitLab
         };
 
-        let url = format!("{}/projects/{}/{}/{}", OPENSSF_API_BASE, platform, owner, name);
+        let url = format!(
+            "{}/projects/{}/{}/{}",
+            OPENSSF_API_BASE, platform, owner, name
+        );
 
         debug!("Fetching OpenSSF Scorecard for {}/{}", owner, name);
 

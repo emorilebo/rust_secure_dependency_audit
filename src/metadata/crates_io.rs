@@ -1,7 +1,7 @@
 //! Fetch metadata from crates.io
 
-use crate::error::{AuditError, Result};
 use crate::config::NetworkConfig;
+use crate::error::{AuditError, Result};
 use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -9,11 +9,7 @@ use std::time::Duration;
 use tracing::{debug, warn};
 
 const CRATES_IO_API: &str = "https://crates.io/api/v1";
-const USER_AGENT: &str = concat!(
-    env!("CARGO_PKG_NAME"),
-    "/",
-    env!("CARGO_PKG_VERSION")
-);
+const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 /// Metadata from crates.io for a crate
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -42,6 +38,7 @@ struct CratesIoResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields kept for forward compatibility with the crates.io schema.
 struct CrateInfo {
     name: String,
     description: Option<String>,
@@ -54,6 +51,7 @@ struct CrateInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields kept for forward compatibility with the crates.io schema.
 struct VersionInfo {
     #[serde(rename = "num")]
     version: String,
@@ -192,7 +190,7 @@ mod tests {
 
         let config = NetworkConfig::default();
         let result = fetch_crate_metadata("serde", "1.0.0", &config).await;
-        
+
         // Should either succeed or fail gracefully
         match result {
             Ok(metadata) => {

@@ -2,80 +2,86 @@
 
 [![Crates.io](https://img.shields.io/crates/v/rust_secure_dependency_audit.svg)](https://crates.io/crates/rust_secure_dependency_audit)
 [![Documentation](https://docs.rs/rust_secure_dependency_audit/badge.svg)](https://docs.rs/rust_secure_dependency_audit)
-[![License](https://img.shields.io/crates/l/rust_secure_dependency_audit.svg)](LICENSE)
+[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/rust_secure_dependency_audit.svg)](#license)
 
-A comprehensive tool for auditing Rust project dependencies, providing insights into health, maintenance status, license compliance, and supply-chain risks.
+Audit the dependencies of a Rust project for **maintenance risk, license
+compliance, and supply-chain health** — usable both as a library and as a
+`secure-audit` CLI for CI pipelines.
 
-## Why This Tool?
+It is intentionally complementary to [`cargo-audit`] (CVE scanning) and
+[`cargo-deny`] (advisories / bans): this crate focuses on *how healthy*
+your dependencies are, not just whether they currently have a published
+advisory.
 
-Modern software projects depend on dozens or hundreds of external crates. While Rust's ecosystem is generally well-maintained, dependencies can become:
-- **Stale**: Not updated in months or years
-- **Unmaintained**: Original authors have moved on
-- **Risky**: Security issues, licensing problems, or abandoned repositories
-- **Bloated**: Excessive footprint for embedded/mobile projects
+[`cargo-audit`]: https://github.com/rustsec/rustsec/tree/main/cargo-audit
+[`cargo-deny`]: https://github.com/EmbarkStudios/cargo-deny
 
-This tool helps you identify and mitigate these risks by analyzing:
-- 📊 **Health scoring**: Weighted algorithm considering recency, maintenance, community, and stability
-- 📜 **License analysis**: Categorize licenses (permissive, copyleft, proprietary) and detect compliance issues
-- 📦 **Footprint estimation**: Identify dependencies that may bloat your binary (useful for embedded/mobile)
-- 🔍 **Metadata aggregation**: Fetch data from crates.io, GitHub, and GitLab
+---
 
-## Features
+## What it tells you
 
-- **Multi-source metadata**: Combines crates.io, GitHub, and GitLab data for comprehensive analysis
-- **Configurable scoring**: Customize weights and thresholds for your project's needs
-- **Both library and CLI**: Use as a library in your tools or run standalone
-- **Fast parallel processing**: Concurrent API calls with rate-limiting protection
-- **Multiple output formats**: JSON and Markdown reports
-- **CI/CD integration**: Exit codes based on thresholds for automated checks
+For every dependency in your `Cargo.lock`, the audit produces:
+
+| Signal             | Sourced from                                              |
+| ------------------ | --------------------------------------------------------- |
+| **Health score**   | crates.io publish history + GitHub/GitLab repo activity   |
+| **Status**         | `Healthy` / `Warning` / `Stale` / `Risky`                 |
+| **License risk**   | SPDX expression → permissive / copyleft / proprietary     |
+| **Footprint risk** | transitive dep count, feature count, build-deps           |
+| **Security signals** | [OpenSSF Scorecard], `SECURITY.md`, yanked status      |
+
+[OpenSSF Scorecard]: https://securityscorecards.dev/
+
+You get a CLI summary, a JSON/Markdown report, and CI-friendly exit codes.
+
+---
 
 ## Installation
 
-### As a CLI tool
+### As a CLI
 
 ```bash
 cargo install rust_secure_dependency_audit
 ```
 
-### As a library
+This installs the `secure-audit` binary.
 
-Add to your `Cargo.toml`:
+### As a library
 
 ```toml
 [dependencies]
-rust_secure_dependency_audit = "0.1"
+rust_secure_dependency_audit = "0.2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-## Quick Start
+---
 
-### CLI Usage
+## Quick start
 
-**Scan your project:**
+### CLI
+
 ```bash
+# Audit the current directory and print a summary
 secure-audit scan
-```
 
-**Generate a JSON report:**
-```bash
+# Show per-dependency detail
+secure-audit scan --detailed
+
+# Write a JSON report for downstream tooling
 secure-audit report --format json --output audit.json
-```
 
-**Check with thresholds (for CI):**
-```bash
+# CI gate: fail the build if anything scores below 60
 secure-audit check --min-health-score 60 --fail-on-copyleft
+
+# Skip dependencies you don't want to score (repeatable)
+secure-audit scan --ignore some-build-tool --ignore another-dev-only-dep
 ```
 
-**Scan with failure threshold:**
-```bash
-secure-audit scan --fail-threshold 70
-```
+> **Tip:** export `GITHUB_TOKEN` (and optionally `GITLAB_TOKEN`) before
+> running to raise API rate limits. Without a token, GitHub allows only
+> 60 requests/hour, which is not enough for medium-sized projects.
 
-**Ignore specific dependencies:**
-```bash
-secure-audit scan --ignore build-script-deps --ignore dev-only-tool
-```
-
-### Library Usage
+### Library
 
 ```rust
 use rust_secure_dependency_audit::{audit_project, AuditConfig, HealthStatus};
@@ -85,218 +91,198 @@ use std::path::Path;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AuditConfig::default();
     let report = audit_project(Path::new("."), &config).await?;
-    
-    for dep in report.dependencies {
-        match dep.status {
-            HealthStatus::Risky => {
-                eprintln!("⚠️  {} v{}: score {}", dep.name, dep.version, dep.health_score);
-            }
-            _ => {}
+
+    for dep in &report.dependencies {
+        if matches!(dep.status, HealthStatus::Risky | HealthStatus::Stale) {
+            eprintln!("⚠  {} v{} — score {}", dep.name, dep.version, dep.health_score);
         }
     }
-    
+
     Ok(())
 }
 ```
 
-## How It Works
+See [`examples/basic_usage.rs`](examples/basic_usage.rs) and
+[`examples/custom_config.rs`](examples/custom_config.rs) for more.
 
-### Health Scoring Algorithm
+---
 
-Each dependency receives a health score (0-100) based on weighted factors:
+## CLI reference
 
-1. **Recency (40%)**: Days since last publish/commit
-   - Updated within 30 days: 100
-   - Within 3 months: 90
-   - Within 6 months: 80
-   - Within 1 year: 60
-   - Within 2 years: 30
-   - Older: 10
+`secure-audit` accepts these global options (usable with any subcommand):
 
-2. **Maintenance (30%)**: Repository activity
-   - Archived repositories: 0
-   - Active issues management: +25
-   - Recent commits: +25
-
-3. **Community (20%)**: Contributors and engagement
-   - Number of authors/maintainers
-   - GitHub stars
-   - Contributor count
-
-4. **Stability (10%)**: Version history
-   - Number of published versions
-   - Download count
-
-5. **Security (15%)**: Security practices
-   - **OpenSSF Scorecard**: 0-10 score mapped to 0-100
-   - **Security Policy**: Presence of `SECURITY.md` (+20 points)
-   - **Yanked Status**: Yanked crates receive a massive penalty (max score 10)
-
-Scores are then categorized:
-- **80-100**: Healthy 🟢
-- **60-79**: Warning 🟡
-- **40-59**: Stale 🟠
-- **0-39**: Risky 🔴
-
-### License Analysis
-
-Licenses are categorized into:
-- **Permissive**: MIT, Apache, BSD, ISC, etc.
-- **Copyleft**: GPL, LGPL, AGPL, MPL, etc.
-- **Proprietary**: Commercial, private licenses
-- **Unknown**: Missing or unrecognized
-
-You can configure:
-- Allowed/forbidden license lists
-- Warnings on copyleft or unknown licenses
-
-### Footprint Estimation
-
-Calculates a footprint risk score (0.0-1.0) based on:
-- **Transitive dependency count** (40%)
-- **Feature count** (30%)
-- **Build dependency complexity** (30%)
-
-Useful for embedded, mobile, or WASM projects where binary size matters.
-
-## Configuration
-
-### TOML Configuration File
-
-Create a config file (e.g., `audit-config.toml`):
-
-```toml
-[scoring_weights]
-recency = 0.50
-maintenance = 0.30
-community = 0.15
-community = 0.15
-stability = 0.10
-security = 0.15
-
-[staleness_thresholds]
-stale_days = 180  # 6 months
-risky_days = 365  # 1 year
-min_maintainers = 2
-
-[license_policy]
-allowed_licenses = ["MIT", "Apache-2.0", "BSD-3-Clause"]
-forbidden_licenses = ["AGPL-3.0"]
-warn_on_copyleft = true
-warn_on_unknown = true
-
-[footprint_thresholds]
-max_transitive_deps = 50
-max_footprint_risk = 0.7
-
-[network]
-timeout_secs = 30
-max_retries = 3
-max_retries = 3
-request_delay_ms = 100
-enable_openssf = true
-```
-
-Use it:
-```bash
-secure-audit scan --config audit-config.toml
-```
-
-### Environment Variables
-
-- `GITHUB_TOKEN`: GitHub personal access token (for higher API rate limits)
-- `GITLAB_TOKEN`: GitLab personal access token
-
-## CLI Reference
-
-### Global Options
-- `--project-path <PATH>`: Path to Rust project (default: current directory)
-- `--config <FILE>`: Custom TOML configuration file
-- `--ignore <CRATE>`: Ignore specific dependencies (repeatable)
-- `--verbose`: Enable verbose logging
+| Option              | Default | Description                                           |
+| ------------------- | ------- | ----------------------------------------------------- |
+| `-p, --project-path` | `.`     | Path to the Rust project to audit                     |
+| `-c, --config`      | —       | Path to a TOML config file (see [Configuration](#configuration)) |
+| `--ignore <NAME>`   | —       | Skip a dependency (repeatable)                        |
+| `-v, --verbose`     | `false` | Verbose logging                                       |
+| `-q, --quiet`       | `false` | Suppress the progress spinner (good for CI)           |
 
 ### Subcommands
 
 #### `scan`
-Run full audit and display summary.
 
-Options:
-- `--fail-threshold <SCORE>`: Exit with error if any dependency scores below threshold
-- `--detailed`: Show detailed information for each dependency
+Run an audit and print a colourised summary.
+
+| Option               | Description                                                |
+| -------------------- | ---------------------------------------------------------- |
+| `--fail-threshold N` | Exit code 1 if any dependency scores below `N` (0–100)     |
+| `--detailed`         | Print every dependency, not just the summary               |
 
 #### `report`
-Generate detailed audit report.
 
-Options:
-- `--format <FORMAT>`: Output format (`json` or `markdown`)
-- `--output <FILE>`: Write to file (default: stdout)
+Generate a report file.
+
+| Option                | Default      | Description                  |
+| --------------------- | ------------ | ---------------------------- |
+| `-f, --format <fmt>`  | `markdown`   | `json` or `markdown` (`md`)  |
+| `-o, --output <file>` | stdout       | Write the report to a file   |
 
 #### `check`
-Check dependencies against thresholds (for CI).
 
-Options:
-- `--min-health-score <SCORE>`: Minimum acceptable score (default: 60)
-- `--fail-on-copyleft`: Fail on copyleft licenses
-- `--fail-on-unknown-license`: Fail on unknown/missing licenses
+CI gate. Exits with code 1 if any check fails.
 
-## Examples
+| Option                       | Default | Description                                |
+| ---------------------------- | ------- | ------------------------------------------ |
+| `--min-health-score N`       | `60`    | Minimum acceptable health score            |
+| `--fail-on-copyleft`         | `false` | Fail if any dependency uses a copyleft licence |
+| `--fail-on-unknown-license`  | `false` | Fail on missing / unrecognised licences    |
 
-Check the `examples/` directory:
-- [`basic_usage.rs`](examples/basic_usage.rs): Simple audit with default config
-- [`custom_config.rs`](examples/custom_config.rs): Custom configuration and filtering
+---
 
-Run examples:
-```bash
-cargo run --example basic_usage
-cargo run --example custom_config
+## How scoring works
+
+Each dependency gets a 0–100 **health score**, a weighted average of five
+component scores. **The defaults sum to 1.0:**
+
+| Component       | Default weight | What it measures                                                |
+| --------------- | -------------- | --------------------------------------------------------------- |
+| **Recency**     | 0.35           | Days since the last publish / commit                            |
+| **Maintenance** | 0.25           | Repo activity, archive status, open-issues load                 |
+| **Community**   | 0.15           | Authors, stars, contributor count                               |
+| **Stability**   | 0.10           | Number of published versions, download count                    |
+| **Security**    | 0.15           | OpenSSF Scorecard (preferred); else `SECURITY.md` heuristic     |
+
+The score then maps to a status:
+
+| Score    | Status      |
+| -------- | ----------- |
+| 80 – 100 | 🟢 Healthy  |
+| 60 – 79  | 🟡 Warning  |
+| 40 – 59  | 🟠 Stale    |
+| 0 – 39   | 🔴 Risky    |
+
+Yanked crates are capped at 10 regardless of any other signal.
+
+### License risk buckets
+
+Licences are normalised through [SPDX] and bucketed:
+
+- **Permissive** — MIT, Apache, BSD, ISC, Zlib, Unlicense, …
+- **Copyleft** — GPL, LGPL, AGPL, MPL, EUPL, OSL, EPL, CDDL, CC-BY-SA
+- **Proprietary** — anything matching "proprietary", "commercial", "all rights reserved"
+- **Unknown** — missing or unrecognised expressions
+
+[SPDX]: https://spdx.org/licenses/
+
+### Footprint risk (0.0 – 1.0)
+
+Useful for embedded, mobile, or WASM targets where binary size matters.
+Calculated from:
+
+- transitive dependency count (40%)
+- feature count (30%)
+- build-script dependency count (30%)
+
+---
+
+## Configuration
+
+Pass a TOML config file with `--config`. All keys are optional — anything
+you omit falls back to defaults.
+
+```toml
+[scoring_weights]
+recency     = 0.35
+maintenance = 0.25
+community   = 0.15
+stability   = 0.10
+security    = 0.15
+
+[staleness_thresholds]
+stale_days      = 180   # >180 days idle → "stale"
+risky_days      = 365   # >365 days idle → "risky"
+min_maintainers = 2
+
+[license_policy]
+allowed_licenses   = ["MIT", "Apache-2.0", "BSD-3-Clause"]
+forbidden_licenses = ["AGPL-3.0"]
+warn_on_copyleft   = true
+warn_on_unknown    = true
+
+[footprint_thresholds]
+max_transitive_deps = 50
+max_footprint_risk  = 0.7
+
+[network]
+timeout_secs     = 30
+max_retries      = 3
+request_delay_ms = 100
+enable_openssf   = true
 ```
 
-## Limitations & Caveats
+Then:
 
-### Rate Limiting
-- **crates.io**: Generally permissive, but may throttle excessive requests
-- **GitHub**: 60 requests/hour unauthenticated, 5000/hour with token
-- **GitLab**: Similar limits
+```bash
+secure-audit scan --config audit-config.toml
+```
 
-**Recommendation**: Set `GITHUB_TOKEN` environment variable to increase limits.
+If `scoring_weights` doesn't sum to exactly 1.0, call
+`ScoringWeights::validate()` from the library to surface the error, or
+`ScoringWeights::normalize()` to rescale.
 
-### Heuristics Are Not Perfect
-- Scoring is based on observable metrics, not code quality audits
-- A high score doesn't guarantee security
-- Manual review is still recommended for critical dependencies
+### Environment variables
 
-### Network Dependency
-- Requires internet access to fetch metadata
-- May fail in air-gapped environments
-- Use `--ignore` to skip problematic dependencies
+| Variable        | Effect                                                |
+| --------------- | ----------------------------------------------------- |
+| `GITHUB_TOKEN`  | Authenticated GitHub API calls (5000 req/h)           |
+| `GITLAB_TOKEN`  | Authenticated GitLab API calls                        |
+| `RUST_LOG`      | Standard `tracing` filter (combine with `--verbose`)  |
 
-### Not a Replacement for `cargo-audit`
-This tool focuses on **maintenance risk**, not known security vulnerabilities. Use in combination with:
-- [`cargo-audit`](https://github.com/rustsec/rustsec/tree/main/cargo-audit): CVE scanning
-- [`cargo-deny`](https://github.com/EmbarkStudios/cargo-deny): License and advisory checks
+---
+
+## Caveats
+
+- **Network required.** Scoring relies on crates.io, GitHub, GitLab, and
+  OpenSSF APIs. Air-gapped environments aren't supported.
+- **Heuristics, not audits.** A high score means *signals look healthy*,
+  not that the code is secure. Pair this tool with `cargo-audit` and
+  manual review for anything critical.
+- **Rate limits.** Set `GITHUB_TOKEN` for non-trivial projects.
+
+---
 
 ## Contributing
 
-Contributions are welcome! Areas for improvement:
-- Additional heuristics for health scoring
-- Support for more Git platforms (Gitea, etc.)
-- Persistent caching of API responses
-- Integration with advisory databases
+PRs welcome. Areas where help is especially useful:
 
-Please open an issue or pull request on [GitHub](https://github.com/emorilebo/rust_secure_dependency_audit).
+- Additional heuristics (e.g. release cadence, breaking-change frequency)
+- More Git platforms (Gitea, Codeberg, sourcehut)
+- Local caching of API responses
+- Integration with `cargo-audit` / `cargo-deny` advisory data
+
+Please open an issue first for non-trivial changes:
+<https://github.com/emorilebo/rust_secure_dependency_audit/issues>
+
+---
 
 ## License
 
-Licensed under either of:
-- MIT License ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+Dual-licensed under either of
 
-at your option.
+- MIT — [LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>
+- Apache 2.0 — [LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>
 
-## Acknowledgments
-
-Built with:
-- [`cargo_metadata`](https://crates.io/crates/cargo_metadata): Cargo project parsing
-- [`reqwest`](https://crates.io/crates/reqwest): HTTP client
-- [`clap`](https://crates.io/crates/clap): CLI framework
-- [`tokio`](https://crates.io/crates/tokio): Async runtime
+at your option. Contributions are accepted under the same dual licence
+unless you explicitly state otherwise.

@@ -16,23 +16,23 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 #[command(version)]
 struct Cli {
     /// Path to the Rust project to audit
-    #[arg(short = 'p', long, default_value = ".")]
+    #[arg(short = 'p', long, default_value = ".", global = true)]
     project_path: PathBuf,
 
     /// Path to custom configuration file (TOML)
-    #[arg(short = 'c', long)]
+    #[arg(short = 'c', long, global = true)]
     config: Option<PathBuf>,
 
     /// Dependencies to ignore (can be specified multiple times)
-    #[arg(long = "ignore")]
+    #[arg(long = "ignore", global = true)]
     ignore_dependencies: Vec<String>,
 
     /// Enable verbose logging
-    #[arg(short = 'v', long)]
+    #[arg(short = 'v', long, global = true)]
     verbose: bool,
 
     /// Suppress progress output (quiet mode, useful for CI)
-    #[arg(short = 'q', long)]
+    #[arg(short = 'q', long, global = true)]
     quiet: bool,
 
     #[command(subcommand)]
@@ -243,7 +243,11 @@ async fn main() {
             }
 
             if !failures.is_empty() {
-                eprintln!("{} {} check failures:", "Failed:".red().bold(), failures.len());
+                eprintln!(
+                    "{} {} check failures:",
+                    "Failed:".red().bold(),
+                    failures.len()
+                );
                 for failure in failures {
                     eprintln!("{}", failure);
                 }
@@ -257,8 +261,7 @@ async fn main() {
 
 fn init_logging(verbose: bool) {
     let filter = if verbose {
-        EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info"))
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
     } else {
         EnvFilter::new("warn")
     };
@@ -281,30 +284,39 @@ fn display_summary(report: &AuditReport) {
     println!("Total dependencies: {}", report.summary.total_dependencies);
     println!();
 
+    let total = report.summary.total_dependencies;
+    let pct = |n: usize| -> f32 {
+        if total == 0 {
+            0.0
+        } else {
+            (n as f32 / total as f32) * 100.0
+        }
+    };
+
     println!("Health Status:");
     println!(
         "  {} {} ({:.1}%)",
         "●".green(),
         format!("Healthy: {}", report.summary.healthy).green(),
-        (report.summary.healthy as f32 / report.summary.total_dependencies as f32) * 100.0
+        pct(report.summary.healthy)
     );
     println!(
         "  {} {} ({:.1}%)",
         "●".yellow(),
         format!("Warning: {}", report.summary.warning).yellow(),
-        (report.summary.warning as f32 / report.summary.total_dependencies as f32) * 100.0
+        pct(report.summary.warning)
     );
     println!(
         "  {} {} ({:.1}%)",
         "●".truecolor(255, 165, 0), // Orange
         format!("Stale: {}", report.summary.stale).truecolor(255, 165, 0),
-        (report.summary.stale as f32 / report.summary.total_dependencies as f32) * 100.0
+        pct(report.summary.stale)
     );
     println!(
         "  {} {} ({:.1}%)",
         "●".red(),
         format!("Risky: {}", report.summary.risky).red(),
-        (report.summary.risky as f32 / report.summary.total_dependencies as f32) * 100.0
+        pct(report.summary.risky)
     );
     println!();
 
@@ -365,7 +377,10 @@ fn generate_json_report(report: &AuditReport) -> String {
 fn generate_markdown_report(report: &AuditReport) -> String {
     let mut md = String::new();
 
-    md.push_str(&format!("# Dependency Audit Report: {}\n\n", report.project_name));
+    md.push_str(&format!(
+        "# Dependency Audit Report: {}\n\n",
+        report.project_name
+    ));
     md.push_str(&format!("**Generated:** {}\n\n", report.timestamp));
 
     md.push_str("## Summary\n\n");

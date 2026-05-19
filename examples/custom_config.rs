@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create custom configuration
     let mut config = AuditConfig::builder()
         .scoring_weights(ScoringWeights {
-            recency: 0.50,      // Emphasize recency more
+            recency: 0.50, // Emphasize recency more
             maintenance: 0.30,
             community: 0.15,
             stability: 0.05,
@@ -28,35 +28,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "Apache-2.0".to_string(),
                 "BSD".to_string(),
             ]),
-            forbidden_licenses: HashSet::from([
-                "AGPL".to_string(),
-            ]),
+            forbidden_licenses: HashSet::from(["AGPL".to_string()]),
             warn_on_copyleft: true,
             warn_on_unknown: true,
         })
         .ignore_dependency("some-dev-tool".to_string())
         .build();
-    
+
     // Validate and normalize weights
     config.scoring_weights.normalize();
-    
+
     let project_path = Path::new(".");
     println!("Auditing with custom configuration...\n");
-    
+
     let report = audit_project(project_path, &config).await?;
-    
+
     println!("=== Custom Audit Results ===");
     println!("Project: {}", report.project_name);
-    println!("Average health score: {:.1}", report.summary.average_health_score);
+    println!(
+        "Average health score: {:.1}",
+        report.summary.average_health_score
+    );
     println!("License issues: {}", report.summary.license_issues);
-    
+
     // Check for license violations
     let license_violations: Vec<_> = report
         .dependencies
         .iter()
         .filter(|d| !d.warnings.is_empty() && d.warnings.iter().any(|w| w.contains("license")))
         .collect();
-    
+
     if !license_violations.is_empty() {
         println!("\n⚠  License Violations:");
         for dep in license_violations {
@@ -68,6 +69,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    
+
     Ok(())
 }

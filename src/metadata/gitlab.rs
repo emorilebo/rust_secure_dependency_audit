@@ -47,7 +47,7 @@ pub async fn fetch_gitlab_metadata(
     debug!("Fetching GitLab metadata for {}", project_path);
 
     let client = build_client(config)?;
-    
+
     // URL-encode the project path
     let encoded_path = urlencoding::encode(&project_path);
     let url = format!("{}/projects/{}", GITLAB_API, encoded_path);
@@ -117,14 +117,12 @@ fn build_client(config: &NetworkConfig) -> Result<Client> {
 
     if let Some(token) = &config.gitlab_token {
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "PRIVATE-TOKEN",
-            token.parse().unwrap(),
-        );
+        headers.insert("PRIVATE-TOKEN", token.parse().unwrap());
         builder = builder.default_headers(headers);
     }
 
-    builder.build()
+    builder
+        .build()
         .map_err(|e| AuditError::network(format!("Failed to build HTTP client: {}", e)))
 }
 
@@ -143,7 +141,10 @@ mod tests {
     fn test_parse_gitlab_url() {
         let test_cases = vec![
             ("https://gitlab.com/gitlab-org/gitlab", "gitlab-org/gitlab"),
-            ("https://gitlab.com/gitlab-org/gitlab.git", "gitlab-org/gitlab"),
+            (
+                "https://gitlab.com/gitlab-org/gitlab.git",
+                "gitlab-org/gitlab",
+            ),
             ("git@gitlab.com:gitlab-org/gitlab.git", "gitlab-org/gitlab"),
         ];
 

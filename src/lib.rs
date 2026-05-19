@@ -44,6 +44,9 @@ mod types;
 
 // Re-export public API
 pub use audit::audit_project;
-pub use config::{AuditConfig, FootprintThresholds, LicensePolicy, NetworkConfig, ScoringWeights, StalenessThresholds};
+pub use config::{
+    AuditConfig, FootprintThresholds, LicensePolicy, NetworkConfig, ScoringWeights,
+    StalenessThresholds,
+};
 pub use error::{AuditError, Result};
 pub use types::{AuditReport, DependencyHealth, HealthStatus, LicenseRisk};

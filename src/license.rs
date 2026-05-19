@@ -9,14 +9,14 @@ pub fn analyze_license(
     policy: &LicensePolicy,
 ) -> (LicenseRisk, Vec<String>) {
     let mut warnings = Vec::new();
-    
+
     let Some(license_str) = license else {
         if policy.warn_on_unknown {
             warnings.push("No license information found".to_string());
         }
         return (LicenseRisk::Unknown, warnings);
     };
-    
+
     // Check forbidden licenses
     if !policy.forbidden_licenses.is_empty() {
         for forbidden in &policy.forbidden_licenses {
@@ -26,7 +26,7 @@ pub fn analyze_license(
             }
         }
     }
-    
+
     // Check allowed licenses (if allowlist is configured)
     if !policy.allowed_licenses.is_empty() {
         let mut is_allowed = false;
@@ -40,50 +40,46 @@ pub fn analyze_license(
             warnings.push(format!("License {} not in allowed list", license_str));
         }
     }
-    
+
     // Categorize license
     let risk = categorize_license(license_str);
-    
+
     // Generate warnings based on policy
     match risk {
-        LicenseRisk::Copyleft => {
-            if policy.warn_on_copyleft {
-                warnings.push(format!("Copyleft license detected: {}", license_str));
-            }
+        LicenseRisk::Copyleft if policy.warn_on_copyleft => {
+            warnings.push(format!("Copyleft license detected: {}", license_str));
         }
-        LicenseRisk::Unknown => {
-            if policy.warn_on_unknown {
-                warnings.push(format!("Unknown license: {}", license_str));
-            }
+        LicenseRisk::Unknown if policy.warn_on_unknown => {
+            warnings.push(format!("Unknown license: {}", license_str));
         }
         LicenseRisk::Proprietary => {
             warnings.push(format!("Proprietary license detected: {}", license_str));
         }
         _ => {}
     }
-    
+
     (risk, warnings)
 }
 
 /// Categorize a license into risk levels
 fn categorize_license(license: &str) -> LicenseRisk {
     let license_lower = license.to_lowercase();
-    
+
     // Check for permissive licenses
     if is_permissive(&license_lower) {
         return LicenseRisk::Permissive;
     }
-    
+
     // Check for copyleft licenses
     if is_copyleft(&license_lower) {
         return LicenseRisk::Copyleft;
     }
-    
+
     // Check for proprietary/restrictive
     if is_proprietary(&license_lower) {
         return LicenseRisk::Proprietary;
     }
-    
+
     LicenseRisk::Unknown
 }
 
@@ -101,25 +97,16 @@ fn is_permissive(license: &str) -> bool {
         "zlib",
         "boost",
     ];
-    
+
     permissive.iter().any(|&p| license.contains(p))
 }
 
 /// Check if license is copyleft
 fn is_copyleft(license: &str) -> bool {
     let copyleft = [
-        "gpl",
-        "lgpl",
-        "agpl",
-        "mpl",
-        "eupl",
-        "osl",
-        "ms-pl",
-        "cddl",
-        "epl",
-        "cc-by-sa",
+        "gpl", "lgpl", "agpl", "mpl", "eupl", "osl", "ms-pl", "cddl", "epl", "cc-by-sa",
     ];
-    
+
     copyleft.iter().any(|&c| license.contains(c))
 }
 
@@ -131,7 +118,7 @@ fn is_proprietary(license: &str) -> bool {
         "private",
         "all rights reserved",
     ];
-    
+
     proprietary.iter().any(|&p| license.contains(p))
 }
 
@@ -139,21 +126,23 @@ fn is_proprietary(license: &str) -> bool {
 fn license_matches(license: &str, pattern: &str) -> bool {
     let license_lower = license.to_lowercase();
     let pattern_lower = pattern.to_lowercase();
-    
+
     // Handle SPDX expressions with OR/AND
     if license_lower.contains(" or ") || license_lower.contains(" and ") {
         // For OR expressions, check if pattern matches any part
         if license_lower.contains(" or ") {
-            return license_lower.split(" or ")
+            return license_lower
+                .split(" or ")
                 .any(|part| part.trim().contains(&pattern_lower));
         }
         // For AND expressions, check if pattern matches any part
         if license_lower.contains(" and ") {
-            return license_lower.split(" and ")
+            return license_lower
+                .split(" and ")
                 .any(|part| part.trim().contains(&pattern_lower));
         }
     }
-    
+
     license_lower.contains(&pattern_lower)
 }
 
@@ -164,7 +153,10 @@ mod tests {
     #[test]
     fn test_categorize_mit() {
         assert_eq!(categorize_license("MIT"), LicenseRisk::Permissive);
-        assert_eq!(categorize_license("MIT OR Apache-2.0"), LicenseRisk::Permissive);
+        assert_eq!(
+            categorize_license("MIT OR Apache-2.0"),
+            LicenseRisk::Permissive
+        );
     }
 
     #[test]
@@ -194,9 +186,11 @@ mod tests {
 
     #[test]
     fn test_analyze_with_policy() {
-        let mut policy = LicensePolicy::default();
-        policy.warn_on_copyleft = true;
-        
+        let policy = LicensePolicy {
+            warn_on_copyleft: true,
+            ..LicensePolicy::default()
+        };
+
         let (risk, warnings) = analyze_license(Some("GPL-3.0"), &policy);
         assert_eq!(risk, LicenseRisk::Copyleft);
         assert!(!warnings.is_empty());

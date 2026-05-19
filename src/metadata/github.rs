@@ -58,10 +58,14 @@ pub async fn fetch_github_metadata(
 
     // Optionally fetch contributors count (separate API call)
     let contributors_url = format!("{}/contributors?per_page=1", repo_url);
-    let contributors_count = fetch_contributors_count(&client, &contributors_url, config).await.ok();
+    let contributors_count = fetch_contributors_count(&client, &contributors_url, config)
+        .await
+        .ok();
 
     // Check for SECURITY.md
-    let has_security_policy = check_security_policy(&client, &owner, &repo, config).await.ok();
+    let has_security_policy = check_security_policy(&client, &owner, &repo, config)
+        .await
+        .ok();
 
     let created_at = parse_github_datetime(&repo_data.created_at)?;
     let updated_at = parse_github_datetime(&repo_data.updated_at)?;
@@ -96,10 +100,18 @@ fn parse_github_url(url: &str) -> Result<(String, String)> {
 
     let parts: Vec<&str> = if url.contains("github.com:") {
         // SSH format: git@github.com:owner/repo
-        url.split("github.com:").nth(1).unwrap_or("").split('/').collect()
+        url.split("github.com:")
+            .nth(1)
+            .unwrap_or("")
+            .split('/')
+            .collect()
     } else if url.contains("github.com/") {
         // HTTPS/Git format: https://github.com/owner/repo
-        url.split("github.com/").nth(1).unwrap_or("").split('/').collect()
+        url.split("github.com/")
+            .nth(1)
+            .unwrap_or("")
+            .split('/')
+            .collect()
     } else {
         return Err(AuditError::parse(format!("Invalid GitHub URL: {}", url)));
     };
@@ -133,7 +145,8 @@ fn build_client(config: &NetworkConfig) -> Result<Client> {
 
     builder = builder.default_headers(headers);
 
-    builder.build()
+    builder
+        .build()
         .map_err(|e| AuditError::network(format!("Failed to build HTTP client: {}", e)))
 }
 
@@ -230,58 +243,51 @@ async fn fetch_contributors_count(
     }
 }
 
-/// Check for existence of SECURITY.md in common locations
+/// Check for existence of a security policy.
+///
+/// Tries the GitHub community-profile endpoint first (single call, returns
+/// `files.security` as a non-null object when a policy exists). Falls back
+/// to looking for SECURITY.md directly in common locations if the community
+/// profile is unavailable.
+///
+/// See: <https://docs.github.com/en/rest/metrics/community>
 async fn check_security_policy(
     client: &Client,
     owner: &str,
     repo: &str,
     config: &NetworkConfig,
 ) -> Result<bool> {
-    // Common locations for SECURITY.md
-    let paths = ["SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md"];
-    
-    for path in paths {
-        let url = format!("{}/repos/{}/{}/contents/{}", GITHUB_API, owner, repo, path);
-        debug!("Checking for security policy at {}", url);
-        
-        // We use a HEAD request if possible, but GitHub API for contents usually returns JSON
-        // For contents API, 200 OK means it exists, 404 means it doesn't.
-        // We can use a lightweight GET request or just check if it exists.
-        // To save bandwidth, we can check the community profile which is a dedicated API for this.
-        // https://docs.github.com/en/rest/metrics/community?apiVersion=2022-11-28
-        
-        // Let's try the community profile endpoint first as it's cleaner
-        let community_url = format!("{}/repos/{}/{}/community/profile", GITHUB_API, owner, repo);
-        
-        match client.get(&community_url).send().await {
-            Ok(resp) => {
-                if resp.status().is_success() {
-                    if let Ok(json) = resp.json::<serde_json::Value>().await {
-                        if let Some(files) = json.get("files") {
-                            if files.get("security_note").is_some() {
-                                return Ok(true);
-                            }
-                        }
+    let community_url = format!("{}/repos/{}/{}/community/profile", GITHUB_API, owner, repo);
+    debug!(
+        "Checking for security policy via community profile: {}",
+        community_url
+    );
+
+    if let Ok(resp) = client.get(&community_url).send().await {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                // GitHub returns `files.security` as an object describing the
+                // policy file when one is present, or null otherwise.
+                if let Some(security) = json.pointer("/files/security") {
+                    if !security.is_null() {
+                        return Ok(true);
                     }
                 }
             }
-            Err(_) => {}
         }
-        
-        // Fallback to checking specific files if community profile fails or isn't available
-        // (though community profile is the standard way now)
-        match client.get(&url).send().await {
-             Ok(resp) => {
-                 if resp.status().is_success() {
-                     return Ok(true);
-                 }
-             }
-             Err(_) => {}
+    }
+
+    // Fallback: check common locations directly via the contents API.
+    for path in ["SECURITY.md", ".github/SECURITY.md", "docs/SECURITY.md"] {
+        let url = format!("{}/repos/{}/{}/contents/{}", GITHUB_API, owner, repo, path);
+        if let Ok(resp) = client.get(&url).send().await {
+            if resp.status().is_success() {
+                return Ok(true);
+            }
         }
-        
         tokio::time::sleep(config.request_delay()).await;
     }
-    
+
     Ok(false)
 }
 
@@ -290,11 +296,7 @@ fn extract_last_page(link_header: &str) -> Option<u32> {
     for link in link_header.split(',') {
         if link.contains("rel=\"last\"") {
             // Extract page number from URL
-            if let Some(page_str) = link
-                .split("page=")
-                .nth(1)
-                .and_then(|s| s.split('>').next())
-            {
+            if let Some(page_str) = link.split("page=").nth(1).and_then(|s| s.split('>').next()) {
                 return page_str.parse().ok();
             }
         }
@@ -317,7 +319,10 @@ mod tests {
     fn test_parse_github_url() {
         let test_cases = vec![
             ("https://github.com/serde-rs/serde", ("serde-rs", "serde")),
-            ("https://github.com/serde-rs/serde.git", ("serde-rs", "serde")),
+            (
+                "https://github.com/serde-rs/serde.git",
+                ("serde-rs", "serde"),
+            ),
             ("git://github.com/serde-rs/serde", ("serde-rs", "serde")),
             ("git@github.com:serde-rs/serde.git", ("serde-rs", "serde")),
         ];

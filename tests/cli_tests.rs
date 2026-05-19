@@ -8,7 +8,7 @@ use std::path::PathBuf;
 fn test_cli_scan_help() {
     let mut cmd = Command::cargo_bin("secure-audit").unwrap();
     cmd.arg("scan").arg("--help");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Run full audit"));
@@ -18,7 +18,7 @@ fn test_cli_scan_help() {
 fn test_cli_report_help() {
     let mut cmd = Command::cargo_bin("secure-audit").unwrap();
     cmd.arg("report").arg("--help");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Generate detailed audit report"));
@@ -28,10 +28,10 @@ fn test_cli_report_help() {
 fn test_cli_check_help() {
     let mut cmd = Command::cargo_bin("secure-audit").unwrap();
     cmd.arg("check").arg("--help");
-    
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Check dependencies against thresholds"));
+
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Check dependencies against thresholds",
+    ));
 }
 
 #[test]
@@ -41,12 +41,10 @@ fn test_cli_scan_sample_project() {
         .join("tests")
         .join("fixtures")
         .join("sample_project");
-    
+
     let mut cmd = Command::cargo_bin("secure-audit").unwrap();
-    cmd.arg("scan")
-        .arg("--project-path")
-        .arg(sample_path);
-    
+    cmd.arg("scan").arg("--project-path").arg(sample_path);
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Audit Summary"));
@@ -59,14 +57,14 @@ fn test_cli_report_json() {
         .join("tests")
         .join("fixtures")
         .join("sample_project");
-    
+
     let mut cmd = Command::cargo_bin("secure-audit").unwrap();
     cmd.arg("report")
         .arg("--project-path")
         .arg(sample_path)
         .arg("--format")
         .arg("json");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("dependencies"));
@@ -79,14 +77,14 @@ fn test_cli_check_threshold() {
         .join("tests")
         .join("fixtures")
         .join("sample_project");
-    
+
     let mut cmd = Command::cargo_bin("secure-audit").unwrap();
     cmd.arg("check")
         .arg("--project-path")
         .arg(sample_path)
         .arg("--min-health-score")
         .arg("50");
-    
+
     // Should pass with reasonable threshold
     cmd.assert().success();
 }
@@ -98,14 +96,14 @@ fn test_cli_scan_with_fail_threshold_low() {
         .join("tests")
         .join("fixtures")
         .join("sample_project");
-    
+
     let mut cmd = Command::cargo_bin("secure-audit").unwrap();
     cmd.arg("scan")
         .arg("--project-path")
         .arg(sample_path)
         .arg("--fail-threshold")
         .arg("100"); // Unreasonably high threshold
-    
+
     // Should fail with 100 threshold
     cmd.assert().failure();
 }

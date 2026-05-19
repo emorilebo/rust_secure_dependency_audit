@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 /// Main configuration for the audit process
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AuditConfig {
     /// Scoring weights for health calculation
     pub scoring_weights: ScoringWeights,
@@ -86,19 +86,6 @@ pub struct NetworkConfig {
     pub enable_openssf: bool,
 }
 
-impl Default for AuditConfig {
-    fn default() -> Self {
-        Self {
-            scoring_weights: ScoringWeights::default(),
-            staleness_thresholds: StalenessThresholds::default(),
-            license_policy: LicensePolicy::default(),
-            footprint_thresholds: FootprintThresholds::default(),
-            network: NetworkConfig::default(),
-            ignored_dependencies: HashSet::new(),
-        }
-    }
-}
-
 impl Default for ScoringWeights {
     fn default() -> Self {
         Self {
@@ -116,10 +103,7 @@ impl ScoringWeights {
     pub fn validate(&self) -> Result<(), String> {
         let sum = self.recency + self.maintenance + self.community + self.stability + self.security;
         if (sum - 1.0).abs() > 0.01 {
-            return Err(format!(
-                "Scoring weights must sum to 1.0, got {}",
-                sum
-            ));
+            return Err(format!("Scoring weights must sum to 1.0, got {}", sum));
         }
         Ok(())
     }
@@ -140,8 +124,8 @@ impl ScoringWeights {
 impl Default for StalenessThresholds {
     fn default() -> Self {
         Self {
-            stale_days: 365,      // 1 year
-            risky_days: 730,      // 2 years
+            stale_days: 365, // 1 year
+            risky_days: 730, // 2 years
             min_maintainers: 1,
         }
     }
