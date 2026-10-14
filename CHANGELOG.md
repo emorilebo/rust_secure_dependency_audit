@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2026-10-14
 
 ### Breaking
+- `rust-version` raised from 1.74 to 1.86: the locked dependency graph (`icu_*`, `idna_adapter`)
+  already required Rust 1.86, so the old value was not accurate.
 - `HealthStatus` has a new `Unknown` variant for dependencies with no
   crates.io or repository metadata (previously scored ~25 and shown as
   `Risky`). Exhaustive `match`es need a new arm.

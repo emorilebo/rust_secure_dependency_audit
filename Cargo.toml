@@ -2,7 +2,7 @@
 name = "rust_secure_dependency_audit"
 version = "0.3.0"
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.86"
 authors = ["Godfrey Lebo <emorylebo@gmail.com>"]
 description = "Audit Cargo dependencies for supply-chain health: maintenance scores from crates.io, GitHub and OpenSSF Scorecard, SPDX license risk, and a CI gate CLI"
 license = "MIT OR Apache-2.0"
