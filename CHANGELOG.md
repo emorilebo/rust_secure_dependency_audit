@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
+### Breaking
+- `HealthStatus` has a new `Unknown` variant for dependencies with no
+  crates.io or repository metadata (previously scored ~25 and shown as
+  `Risky`). Exhaustive `match`es need a new arm.
+- `ComponentScores` fields are now `Option<f32>`; `None` means "not
+  measured" and the component is left out of the weighted average (weights
+  are renormalised) instead of counting as 0 or a fake neutral 50.
+- New fields: `AuditReport::notices`, `AuditSummary::unknown`.
+- Local path dependencies are no longer scored (they were always `Risky`);
+  they are skipped and counted in a notice.
+- `check` and `scan --fail-threshold` treat `Unknown` dependencies as
+  failures, so a network outage cannot make a CI gate pass.
+- Config files now reject unknown keys instead of ignoring them.
+
+### Fixed
+- **GitHub rate limiting (no token):** a `403` was treated as a rate limit
+  even when it was not, and once the limit was hit every remaining
+  dependency still called the API. The client now recognises GitHub's
+  rate-limit signals (`x-ratelimit-remaining: 0`, `retry-after`, `429`),
+  stops calling GitHub for the rest of the run, scores the remaining crates
+  without repository signals, and prints one notice with the reset time and
+  the `GITHUB_TOKEN` hint. A rejected token (`401`) is handled the same way.
+- **GitHub request volume:** up to six API calls per dependency are now at
+  most two per *repository*: lookups are cached per `owner/repo`, and
+  `SECURITY.md` detection uses `raw.githubusercontent.com` (including the
+  owner's `.github` repository) instead of the community-profile and
+  contents API.
+- **crates.io politeness:** requests were issued about ten per second; they
+  are now paced to at most one per second as the crates.io data-access
+  policy requires, cached per crate name, retried on `429`/`5xx` honouring
+  `Retry-After`, and sent with a User-Agent that links to this repository.
+  `request_delay_ms` now defaults to `1000`.
+- **Contributor count was always 1:** the `Link` header parser matched the
+  `page=` inside `per_page=`.
+- **Maintainer count was always 0:** crates.io no longer returns `authors`;
+  the count now uses distinct crates.io publishers.
+- **Unknown signals were penalised:** a failed contributors or
+  `SECURITY.md` lookup was recorded as "0 contributors" / "no policy".
+- **Config files:** every section and key was mandatory, so the README
+  example failed with `missing field 'ignored_dependencies'`; all keys now
+  default. `GITHUB_TOKEN` is honoured when a config file has a `[network]`
+  section without a token. The CLI rejects scoring weights that do not sum
+  to 1.0.
+- **License analysis** now parses SPDX expressions (the `spdx` dependency was
+  declared but unused): `AND` with a copyleft license is copyleft, `OR` lets
+  the permissive option win, and Unicode-3.0, BSL-1.0, CC0-1.0 and
+  CDLA-Permissive-2.0 are permissive (the 18 `Unicode-3.0` crates in this
+  crate's own tree, the ICU stack behind `url`, were "Unknown" before). Allow/deny lists match license ids by prefix, so
+  `GPL-3.0` no longer matches `LGPL-3.0`. Licenses are read from the local
+  manifest first, so they work for git/path dependencies and offline.
+- **Direct dependencies** were detected by name, marking the wrong version
+  as direct when several versions of a crate are in the tree.
+- **Alternative registries** were looked up on crates.io, where a crate of
+  the same name may be a different crate; they are now `Unknown` unless
+  their repository URL can be scored.
+- **OpenSSF lookups** failed for repository URLs ending in `.git` or
+  pointing at a sub-directory.
+- **Panics:** a `GITHUB_TOKEN`/`GITLAB_TOKEN` with a trailing newline or
+  other non-header characters panicked inside a task and silently dropped
+  the dependency from the report.
+- Git dependencies are scored from their GitHub/GitLab source URL; git
+  source URLs no longer keep the `#commit` fragment.
+- `--fail-threshold` and `--min-health-score` reject values above 100.
+- `cargo metadata` runs once (with all features) instead of three times,
+  and footprint analysis uses the same resolution as the dependency list.
+- The self-audit unit test no longer runs on every `cargo test`; it made
+  hundreds of network requests and exhausted the unauthenticated GitHub
+  quota. Network tests are `#[ignore]`; new offline tests use mock servers.
+
+### Changed
+- Recency without repository data uses the crate's newest release rather
+  than the locked version's release date, matching what the GitHub path
+  measures (repository-level activity).
+- `report --help` lists the accepted formats; `--format` is case-insensitive.
+- Notices are printed to stderr, so `report --format json` on stdout stays
+  valid JSON. Markdown reports include a Notices section.
+- Tokens are redacted from `NetworkConfig`'s `Debug` output and never
+  serialized.
+- Re-exported `AuditSummary`, `ComponentScores`, `DependencyMetrics`,
+  `DependencySource`, `RepositoryMetrics` and `AuditConfigBuilder`.
+- `anyhow` moved to dev-dependencies (only used in doc examples).
+- README rewritten: rate-limit behaviour, exit codes, FAQ, limitations.
+
 ## [0.2.2] - 2026-05-19
 
 ### Fixed

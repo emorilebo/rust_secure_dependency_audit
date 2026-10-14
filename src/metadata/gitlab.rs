@@ -2,13 +2,15 @@
 
 use crate::config::NetworkConfig;
 use crate::error::{AuditError, Result};
+use crate::metadata::http;
 use chrono::{DateTime, Utc};
+use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
+use std::time::SystemTime;
+use tracing::{debug, warn};
 
 const GITLAB_API: &str = "https://gitlab.com/api/v4";
-const USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"));
 
 /// Metadata from GitLab for a repository
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +56,15 @@ pub async fn fetch_gitlab_metadata(
 
     let response = client.get(&url).send().await?;
 
+    if let Some(retry_after) =
+        http::rate_limit_wait(response.status(), response.headers(), SystemTime::now())
+    {
+        return Err(AuditError::RateLimitExceeded {
+            service: "GitLab".to_string(),
+            retry_after,
+        });
+    }
+
     if !response.status().is_success() {
         if response.status().as_u16() == 404 {
             return Err(AuditError::api("GitLab", "Project not found"));
@@ -83,14 +94,17 @@ pub async fn fetch_gitlab_metadata(
 }
 
 /// Parse GitLab URL to extract project path
-fn parse_gitlab_url(url: &str) -> Result<String> {
+pub(crate) fn parse_gitlab_url(url: &str) -> Result<String> {
     // Handle various GitLab URL formats:
     // - https://gitlab.com/group/project
     // - https://gitlab.com/group/subgroup/project
     // - git@gitlab.com:group/project.git
 
-    let url = url.trim_end_matches(".git");
+    let url = url.split(['?', '#']).next().unwrap_or_default();
     let url = url.trim_end_matches('/');
+    let url = url.trim_end_matches(".git");
+    // Drop GitLab UI suffixes such as `/-/tree/main`.
+    let url = url.split("/-/").next().unwrap_or_default();
 
     let path = if url.contains("gitlab.com:") {
         // SSH format
@@ -111,19 +125,25 @@ fn parse_gitlab_url(url: &str) -> Result<String> {
 
 /// Build HTTP client with GitLab authentication if available
 fn build_client(config: &NetworkConfig) -> Result<Client> {
-    let mut builder = Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(config.timeout());
+    let mut builder = http::client_builder(config.timeout());
 
-    if let Some(token) = &config.gitlab_token {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("PRIVATE-TOKEN", token.parse().unwrap());
-        builder = builder.default_headers(headers);
+    if let Some(token) = config.gitlab_token.as_deref().map(str::trim) {
+        match HeaderValue::from_str(token) {
+            Ok(mut value) if !token.is_empty() => {
+                value.set_sensitive(true);
+                let mut headers = HeaderMap::new();
+                headers.insert("PRIVATE-TOKEN", value);
+                builder = builder.default_headers(headers);
+            }
+            Ok(_) => {}
+            Err(_) => warn!(
+                "GITLAB_TOKEN contains characters that are not valid in an HTTP header; \
+                 continuing without GitLab authentication"
+            ),
+        }
     }
 
-    builder
-        .build()
-        .map_err(|e| AuditError::network(format!("Failed to build HTTP client: {}", e)))
+    http::build(builder)
 }
 
 /// Parse GitLab datetime format (ISO 8601)
@@ -146,11 +166,25 @@ mod tests {
                 "gitlab-org/gitlab",
             ),
             ("git@gitlab.com:gitlab-org/gitlab.git", "gitlab-org/gitlab"),
+            ("https://gitlab.com/group/sub/project/", "group/sub/project"),
+            (
+                "https://gitlab.com/group/project/-/tree/main",
+                "group/project",
+            ),
         ];
 
         for (url, expected) in test_cases {
             let result = parse_gitlab_url(url).unwrap();
             assert_eq!(result, expected);
         }
+    }
+
+    #[test]
+    fn invalid_token_does_not_panic() {
+        let config = NetworkConfig {
+            gitlab_token: Some("bad\u{7}token".to_string()),
+            ..NetworkConfig::default()
+        };
+        assert!(build_client(&config).is_ok());
     }
 }

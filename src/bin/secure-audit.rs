@@ -1,10 +1,10 @@
 //! CLI tool for auditing Rust dependencies
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use rust_secure_dependency_audit::{
-    audit_project, AuditConfig, AuditReport, HealthStatus, LicenseRisk,
+    audit_project, AuditConfig, AuditReport, DependencyHealth, HealthStatus, LicenseRisk,
 };
 use std::path::PathBuf;
 use std::process;
@@ -44,7 +44,7 @@ enum Commands {
     /// Run full audit and display summary
     Scan {
         /// Fail if any dependency has a health score below this threshold (0-100)
-        #[arg(long)]
+        #[arg(long, value_parser = clap::value_parser!(u8).range(0..=100))]
         fail_threshold: Option<u8>,
 
         /// Display detailed information for each dependency
@@ -55,7 +55,13 @@ enum Commands {
     /// Generate detailed audit report
     Report {
         /// Output format
-        #[arg(short = 'f', long, default_value = "markdown")]
+        #[arg(
+            short = 'f',
+            long,
+            value_enum,
+            ignore_case = true,
+            default_value = "markdown"
+        )]
         format: ReportFormat,
 
         /// Output file (default: stdout)
@@ -66,7 +72,7 @@ enum Commands {
     /// Check dependencies against thresholds (exit code based)
     Check {
         /// Minimum acceptable health score (0-100)
-        #[arg(long, default_value = "60")]
+        #[arg(long, default_value = "60", value_parser = clap::value_parser!(u8).range(0..=100))]
         min_health_score: u8,
 
         /// Fail on copyleft licenses
@@ -79,22 +85,11 @@ enum Commands {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, ValueEnum)]
 enum ReportFormat {
     Json,
+    #[value(alias = "md")]
     Markdown,
-}
-
-impl std::str::FromStr for ReportFormat {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "json" => Ok(ReportFormat::Json),
-            "markdown" | "md" => Ok(ReportFormat::Markdown),
-            _ => Err(format!("Unknown format: {}", s)),
-        }
-    }
 }
 
 #[tokio::main]
@@ -164,12 +159,14 @@ async fn main() {
                 display_detailed(&report);
             }
 
+            display_notices(&report);
+
             // Check threshold
             if let Some(threshold) = fail_threshold {
                 let failing: Vec<_> = report
                     .dependencies
                     .iter()
-                    .filter(|d| d.health_score < threshold)
+                    .filter(|d| is_below_threshold(d, threshold))
                     .collect();
 
                 if !failing.is_empty() {
@@ -180,10 +177,7 @@ async fn main() {
                         threshold
                     );
                     for dep in &failing {
-                        eprintln!(
-                            "  - {} v{}: score {}",
-                            dep.name, dep.version, dep.health_score
-                        );
+                        eprintln!("  - {}", describe_score_failure(dep, threshold));
                     }
                     process::exit(1);
                 }
@@ -191,6 +185,8 @@ async fn main() {
         }
 
         Commands::Report { format, output } => {
+            display_notices(&report);
+
             let content = match format {
                 ReportFormat::Json => generate_json_report(&report),
                 ReportFormat::Markdown => generate_markdown_report(&report),
@@ -216,12 +212,14 @@ async fn main() {
         } => {
             let mut failures = Vec::new();
 
+            display_notices(&report);
+
             for dep in &report.dependencies {
-                // Check health score
-                if dep.health_score < min_health_score {
+                // Check health score (unscored dependencies fail closed)
+                if is_below_threshold(dep, min_health_score) {
                     failures.push(format!(
-                        "  - {} v{}: health score {} < {}",
-                        dep.name, dep.version, dep.health_score, min_health_score
+                        "  - {}",
+                        describe_score_failure(dep, min_health_score)
                     ));
                 }
 
@@ -275,7 +273,35 @@ fn init_logging(verbose: bool) {
 fn load_config(path: &PathBuf) -> Result<AuditConfig, Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(path)?;
     let config: AuditConfig = toml::from_str(&content)?;
+    config.scoring_weights.validate()?;
     Ok(config)
+}
+
+/// Unscored (`Unknown`) dependencies count as failing: a gate that passes
+/// because the network was down would be a gate that never fails.
+fn is_below_threshold(dep: &DependencyHealth, threshold: u8) -> bool {
+    dep.status == HealthStatus::Unknown || dep.health_score < threshold
+}
+
+fn describe_score_failure(dep: &DependencyHealth, threshold: u8) -> String {
+    if dep.status == HealthStatus::Unknown {
+        format!(
+            "{} v{}: could not be scored (no metadata available)",
+            dep.name, dep.version
+        )
+    } else {
+        format!(
+            "{} v{}: health score {} < {}",
+            dep.name, dep.version, dep.health_score, threshold
+        )
+    }
+}
+
+/// Run-level notices go to stderr so they never corrupt a report on stdout.
+fn display_notices(report: &AuditReport) {
+    for notice in &report.notices {
+        eprintln!("{} {}", "Note:".yellow().bold(), notice);
+    }
 }
 
 fn display_summary(report: &AuditReport) {
@@ -318,6 +344,14 @@ fn display_summary(report: &AuditReport) {
         format!("Risky: {}", report.summary.risky).red(),
         pct(report.summary.risky)
     );
+    if report.summary.unknown > 0 {
+        println!(
+            "  {} {} ({:.1}%)",
+            "●".dimmed(),
+            format!("Unknown: {}", report.summary.unknown).dimmed(),
+            pct(report.summary.unknown)
+        );
+    }
     println!();
 
     println!(
@@ -340,14 +374,20 @@ fn display_detailed(report: &AuditReport) {
             HealthStatus::Warning => dep.status.to_string().yellow(),
             HealthStatus::Stale => dep.status.to_string().truecolor(255, 165, 0),
             HealthStatus::Risky => dep.status.to_string().red(),
+            HealthStatus::Unknown => dep.status.to_string().dimmed(),
         };
 
+        let score = if dep.status == HealthStatus::Unknown {
+            "n/a".to_string()
+        } else {
+            dep.health_score.to_string()
+        };
         println!(
             "\n{} v{} [{}] Score: {}",
             dep.name.bold(),
             dep.version,
             status_str,
-            dep.health_score
+            score
         );
 
         if let Some(license) = &dep.license {
@@ -392,6 +432,7 @@ fn generate_markdown_report(report: &AuditReport) -> String {
     md.push_str(&format!("- Warning: {}\n", report.summary.warning));
     md.push_str(&format!("- Stale: {}\n", report.summary.stale));
     md.push_str(&format!("- Risky: {}\n", report.summary.risky));
+    md.push_str(&format!("- Unknown: {}\n", report.summary.unknown));
     md.push_str(&format!(
         "- Average health score: {:.1}\n",
         report.summary.average_health_score
@@ -405,17 +446,30 @@ fn generate_markdown_report(report: &AuditReport) -> String {
         report.summary.high_footprint_count
     ));
 
+    if !report.notices.is_empty() {
+        md.push_str("## Notices\n\n");
+        for notice in &report.notices {
+            md.push_str(&format!("- {}\n", notice));
+        }
+        md.push('\n');
+    }
+
     md.push_str("## Dependencies\n\n");
     md.push_str("| Name | Version | Status | Score | License | Footprint |\n");
     md.push_str("|------|---------|--------|-------|---------|----------|\n");
 
     for dep in &report.dependencies {
+        let score = if dep.status == HealthStatus::Unknown {
+            "n/a".to_string()
+        } else {
+            dep.health_score.to_string()
+        };
         md.push_str(&format!(
             "| {} | {} | {} | {} | {} | {:.2} |\n",
             dep.name,
             dep.version,
             dep.status,
-            dep.health_score,
+            score,
             dep.license.as_deref().unwrap_or("Unknown"),
             dep.footprint_risk.unwrap_or(0.0)
         ));

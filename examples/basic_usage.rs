@@ -25,11 +25,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Warning: {}", report.summary.warning);
     println!("  Stale: {}", report.summary.stale);
     println!("  Risky: {}", report.summary.risky);
+    println!("  Unknown: {}", report.summary.unknown);
     println!(
         "  Average score: {:.1}",
         report.summary.average_health_score
     );
     println!();
+
+    // Degraded-data notices (e.g. GitHub rate limit) worth surfacing
+    for notice in &report.notices {
+        println!("Note: {}", notice);
+    }
 
     // Show risky dependencies
     let risky: Vec<_> = report

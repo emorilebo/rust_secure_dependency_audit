@@ -55,20 +55,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let license_violations: Vec<_> = report
         .dependencies
         .iter()
-        .filter(|d| !d.warnings.is_empty() && d.warnings.iter().any(|w| w.contains("license")))
+        .filter(|d| d.warnings.iter().any(|w| is_license_warning(w)))
         .collect();
 
     if !license_violations.is_empty() {
         println!("\n⚠  License Violations:");
         for dep in license_violations {
             println!("  - {} v{} ({:?})", dep.name, dep.version, dep.license);
-            for warning in &dep.warnings {
-                if warning.contains("license") {
-                    println!("    {}", warning);
-                }
+            for warning in dep.warnings.iter().filter(|w| is_license_warning(w)) {
+                println!("    {}", warning);
             }
         }
     }
 
     Ok(())
+}
+
+fn is_license_warning(warning: &str) -> bool {
+    warning.to_lowercase().contains("license")
 }

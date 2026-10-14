@@ -4,8 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::time::Duration;
 
-/// Main configuration for the audit process
+/// Main configuration for the audit process.
+///
+/// Every field (and every field of the nested sections) has a default, so a
+/// TOML config file only needs the keys you want to change. Unknown keys are
+/// rejected, so a typo cannot silently fall back to a default.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct AuditConfig {
     /// Scoring weights for health calculation
     pub scoring_weights: ScoringWeights,
@@ -23,6 +28,7 @@ pub struct AuditConfig {
 
 /// Weights for different components of the health score
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct ScoringWeights {
     /// Weight for recency score (0.0-1.0)
     pub recency: f32,
@@ -38,17 +44,24 @@ pub struct ScoringWeights {
 
 /// Thresholds for determining staleness
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct StalenessThresholds {
-    /// Days since last update before considering "stale"
+    /// Days since last update after which the recency component drops to 30/100
     pub stale_days: u32,
-    /// Days since last update before considering "risky"
+    /// Days since last update after which the recency component drops to 10/100
     pub risky_days: u32,
-    /// Minimum number of maintainers to be considered healthy
+    /// Reserved: not used by the scorer yet
     pub min_maintainers: u32,
 }
 
 /// License policy configuration
+///
+/// Entries in `allowed_licenses` / `forbidden_licenses` are matched
+/// case-insensitively as a prefix of each SPDX license id in an expression,
+/// so `"GPL-3.0"` matches `GPL-3.0-only` but not `LGPL-3.0-only`, and
+/// `"BSD"` matches every `BSD-*` license.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct LicensePolicy {
     /// Allowed license types (empty = allow all)
     pub allowed_licenses: HashSet<String>,
@@ -62,6 +75,7 @@ pub struct LicensePolicy {
 
 /// Footprint risk thresholds
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct FootprintThresholds {
     /// Maximum acceptable transitive dependency count
     pub max_transitive_deps: Option<u32>,
@@ -70,17 +84,27 @@ pub struct FootprintThresholds {
 }
 
 /// Network configuration for API calls
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// When deserialized from a config file, a missing `github_token` /
+/// `gitlab_token` falls back to the `GITHUB_TOKEN` / `GITLAB_TOKEN`
+/// environment variables. Tokens are never serialized and are redacted from
+/// `Debug` output.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct NetworkConfig {
     /// Request timeout in seconds
     pub timeout_secs: u64,
     /// Maximum number of retries for failed requests
     pub max_retries: u32,
-    /// Delay between requests to avoid rate limiting (milliseconds)
+    /// Minimum delay between crates.io API requests, and the base delay for
+    /// retry backoff (milliseconds). Values below 1000 are raised to 1000 for
+    /// crates.io, whose data-access policy allows at most one request per second.
     pub request_delay_ms: u64,
     /// GitHub API token (optional, for higher rate limits)
+    #[serde(skip_serializing)]
     pub github_token: Option<String>,
     /// GitLab API token (optional)
+    #[serde(skip_serializing)]
     pub gitlab_token: Option<String>,
     /// Enable OpenSSF Scorecard checks (requires network)
     pub enable_openssf: bool,
@@ -156,11 +180,25 @@ impl Default for NetworkConfig {
         Self {
             timeout_secs: 30,
             max_retries: 3,
-            request_delay_ms: 100,
+            request_delay_ms: 1000,
             github_token: std::env::var("GITHUB_TOKEN").ok(),
             gitlab_token: std::env::var("GITLAB_TOKEN").ok(),
             enable_openssf: true,
         }
+    }
+}
+
+impl std::fmt::Debug for NetworkConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let redact = |token: &Option<String>| token.as_ref().map(|_| "<redacted>");
+        f.debug_struct("NetworkConfig")
+            .field("timeout_secs", &self.timeout_secs)
+            .field("max_retries", &self.max_retries)
+            .field("request_delay_ms", &self.request_delay_ms)
+            .field("github_token", &redact(&self.github_token))
+            .field("gitlab_token", &redact(&self.gitlab_token))
+            .field("enable_openssf", &self.enable_openssf)
+            .finish()
     }
 }
 
@@ -234,5 +272,78 @@ impl AuditConfigBuilder {
             network: self.network.unwrap_or_default(),
             ignored_dependencies: self.ignored_dependencies,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_config_file_uses_defaults() {
+        let config: AuditConfig = toml::from_str("").unwrap();
+        assert!(config.scoring_weights.validate().is_ok());
+        assert_eq!(config.staleness_thresholds.stale_days, 365);
+        assert!(config.ignored_dependencies.is_empty());
+    }
+
+    #[test]
+    fn partial_section_keeps_other_defaults() {
+        let config: AuditConfig = toml::from_str("[network]\nrequest_delay_ms = 2500\n").unwrap();
+        assert_eq!(config.network.request_delay_ms, 2500);
+        assert_eq!(config.network.timeout_secs, 30);
+        assert!(config.network.enable_openssf);
+        assert_eq!(config.footprint_thresholds.max_transitive_deps, Some(100));
+    }
+
+    #[test]
+    fn readme_configuration_example_parses() {
+        let readme = include_str!("../README.md");
+        let section = readme
+            .split("## Configuration")
+            .nth(1)
+            .expect("README has a Configuration section");
+        let toml_block = section
+            .split("```toml")
+            .nth(1)
+            .and_then(|rest| rest.split("```").next())
+            .expect("Configuration section has a toml code block");
+
+        let config: AuditConfig = toml::from_str(toml_block).unwrap();
+        assert!(config.scoring_weights.validate().is_ok());
+        assert_eq!(config.staleness_thresholds.stale_days, 180);
+        assert!(config.ignored_dependencies.contains("some-internal-crate"));
+    }
+
+    #[test]
+    fn unknown_keys_are_rejected() {
+        // A misspelt key (or a top-level key placed under a [table]) used to
+        // be ignored silently.
+        let err = toml::from_str::<AuditConfig>("[staleness_thresholds]\nstale_day = 10\n")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("stale_day"), "{err}");
+
+        let err = toml::from_str::<AuditConfig>(
+            "[network]\ntimeout_secs = 5\nignored_dependencies = [\"x\"]\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("ignored_dependencies"), "{err}");
+    }
+
+    #[test]
+    fn debug_output_redacts_tokens() {
+        let network = NetworkConfig {
+            github_token: Some("ghp_secret_value".to_string()),
+            gitlab_token: Some("glpat_secret_value".to_string()),
+            ..NetworkConfig::default()
+        };
+        let debug = format!("{:?}", network);
+        assert!(!debug.contains("secret_value"));
+        assert!(debug.contains("<redacted>"));
+
+        let serialized = toml::to_string(&network).unwrap();
+        assert!(!serialized.contains("secret_value"));
     }
 }

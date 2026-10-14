@@ -16,18 +16,33 @@ pub struct AuditReport {
     pub dependencies: Vec<DependencyHealth>,
     /// Summary statistics
     pub summary: AuditSummary,
+    /// Run-level notices about degraded or partial results (for example a
+    /// GitHub API rate limit, or local path dependencies that were skipped)
+    #[serde(default)]
+    pub notices: Vec<String>,
 }
 
 /// Summary statistics for an audit report
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditSummary {
+    /// Dependencies in the report (path dependencies and ignored crates excluded)
     pub total_dependencies: usize,
+    /// Dependencies with status `Healthy`
     pub healthy: usize,
+    /// Dependencies with status `Warning`
     pub warning: usize,
+    /// Dependencies with status `Stale`
     pub stale: usize,
+    /// Dependencies with status `Risky`
     pub risky: usize,
+    /// Dependencies that could not be scored because no metadata was available
+    #[serde(default)]
+    pub unknown: usize,
+    /// Average health score of the dependencies that could be scored
     pub average_health_score: f32,
+    /// Dependencies whose license is copyleft, proprietary or unknown
     pub license_issues: usize,
+    /// Dependencies with a footprint risk above 0.7
     pub high_footprint_count: usize,
 }
 
@@ -40,7 +55,7 @@ pub struct DependencyHealth {
     pub version: String,
     /// Whether this is a direct dependency (vs transitive)
     pub is_direct: bool,
-    /// Overall health score (0-100)
+    /// Overall health score (0-100); `0` when `status` is `Unknown`
     pub health_score: u8,
     /// Health status category
     pub status: HealthStatus,
@@ -72,6 +87,9 @@ pub enum HealthStatus {
     Stale,
     /// Risky: deprecated, unmaintained, or high risk
     Risky,
+    /// Unknown: no crates.io or repository metadata could be fetched, so no
+    /// score was computed
+    Unknown,
 }
 
 impl std::fmt::Display for HealthStatus {
@@ -81,6 +99,7 @@ impl std::fmt::Display for HealthStatus {
             Self::Warning => write!(f, "Warning"),
             Self::Stale => write!(f, "Stale"),
             Self::Risky => write!(f, "Risky"),
+            Self::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -131,7 +150,7 @@ pub struct DependencyMetrics {
     pub days_since_last_update: Option<u32>,
     /// Number of crate versions published
     pub version_count: Option<u32>,
-    /// Number of authors/maintainers
+    /// Number of distinct crates.io accounts that have published the crate
     pub maintainer_count: Option<u32>,
     /// Repository metrics (if available)
     pub repository: Option<RepositoryMetrics>,
@@ -158,19 +177,23 @@ pub struct RepositoryMetrics {
     pub has_security_policy: Option<bool>,
 }
 
-/// Individual component scores (0-100 scale)
+/// Individual component scores (0-100 scale).
+///
+/// `None` means the component could not be measured (for example, no
+/// repository data because the GitHub API rate limit was exhausted). Missing
+/// components are left out of the weighted average instead of counting as 0.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentScores {
     /// Score based on recency of updates
-    pub recency: f32,
-    /// Score based on maintenance activity
-    pub maintenance: f32,
-    /// Score based on community size and engagement
-    pub community: f32,
-    /// Score based on version stability
-    pub stability: f32,
+    pub recency: Option<f32>,
+    /// Score based on maintenance activity (needs repository data)
+    pub maintenance: Option<f32>,
+    /// Score based on community size and engagement (needs repository data)
+    pub community: Option<f32>,
+    /// Score based on version stability (needs crates.io data)
+    pub stability: Option<f32>,
     /// Score based on security practices (OpenSSF, SECURITY.md)
-    pub security: f32,
+    pub security: Option<f32>,
 }
 
 impl AuditReport {
@@ -182,6 +205,7 @@ impl AuditReport {
             timestamp: Utc::now(),
             dependencies: Vec::new(),
             summary: AuditSummary::default(),
+            notices: Vec::new(),
         }
     }
 
@@ -192,6 +216,7 @@ impl AuditReport {
         let mut warning = 0;
         let mut stale = 0;
         let mut risky = 0;
+        let mut unknown = 0;
         let mut total_score = 0u32;
         let mut license_issues = 0;
         let mut high_footprint = 0;
@@ -202,9 +227,12 @@ impl AuditReport {
                 HealthStatus::Warning => warning += 1,
                 HealthStatus::Stale => stale += 1,
                 HealthStatus::Risky => risky += 1,
+                HealthStatus::Unknown => unknown += 1,
             }
 
-            total_score += dep.health_score as u32;
+            if dep.status != HealthStatus::Unknown {
+                total_score += dep.health_score as u32;
+            }
 
             if matches!(
                 dep.license_risk,
@@ -226,8 +254,9 @@ impl AuditReport {
             warning,
             stale,
             risky,
-            average_health_score: if total > 0 {
-                total_score as f32 / total as f32
+            unknown,
+            average_health_score: if total > unknown {
+                total_score as f32 / (total - unknown) as f32
             } else {
                 0.0
             },
@@ -245,6 +274,7 @@ impl Default for AuditSummary {
             warning: 0,
             stale: 0,
             risky: 0,
+            unknown: 0,
             average_health_score: 0.0,
             license_issues: 0,
             high_footprint_count: 0,

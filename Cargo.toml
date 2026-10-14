@@ -1,16 +1,16 @@
 [package]
 name = "rust_secure_dependency_audit"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.74"
 authors = ["Godfrey Lebo <emorylebo@gmail.com>"]
-description = "A comprehensive tool for auditing Rust project dependencies: health scoring, license analysis, maintenance risk, and footprint estimation"
+description = "Audit Cargo dependencies for supply-chain health: maintenance scores from crates.io, GitHub and OpenSSF Scorecard, SPDX license risk, and a CI gate CLI"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/emorilebo/rust_secure_dependency_audit"
 homepage = "https://github.com/emorilebo/rust_secure_dependency_audit"
 documentation = "https://docs.rs/rust_secure_dependency_audit"
 readme = "README.md"
-keywords = ["audit", "dependency", "security", "rust", "supply-chain"]
+keywords = ["audit", "supply-chain", "dependencies", "license", "security"]
 categories = ["development-tools", "command-line-utilities"]
 exclude = [
     "error.log",
@@ -29,7 +29,6 @@ cargo_metadata = "0.18"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
-anyhow = "1.0"
 thiserror = "1.0"
 
 # HTTP client and async runtime
@@ -58,8 +57,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 assert_cmd = "2.0"
 predicates = "3.0"
 mockito = "1.2"
-tokio-test = "0.4"
 tempfile = "3.8"
+anyhow = "1.0"
+tokio = { version = "1.35", features = ["full", "test-util"] }
 
 [profile.release]
 opt-level = 3
